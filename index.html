@@ -19,7 +19,10 @@
 
   <script type="text/babel">
     const { useState, useEffect, useRef, useCallback } = React;
-    const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } = window.Recharts;
+    
+    // Proteção contra carregamento lento da biblioteca de gráficos (Evita Tela Branca)
+    const Recharts = window.Recharts || {};
+    const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } = Recharts;
 
     /* ─── CREDENCIAIS SUPABASE ──────────────────────────────── */
     const SUPABASE_URL = 'https://wqajkohquvoukljpkqet.supabase.co';
@@ -57,115 +60,88 @@
       const [view, setView] = useState("dashboard");
       const [monthIdx, setMonthIdx] = useState(CURRENT_MONTH_IDX);
       const [filtroContaId, setFiltroContaId] = useState("Todas");
+      
       const [loading, setLoading] = useState(true);
+      const [erro, setErro] = useState(null); // O Escudo Anti-Tela Branca
       const [scanOpen, setScanOpen] = useState(false);
 
-      // Carregamento Inicial e Setup Automático
       useEffect(() => {
+        let isMounted = true;
+
         async function boot() {
-          // 1. Puxa Contas
-          let { data: dbContas } = await supabase.from('contas_bancarias').select('*');
-          if (!dbContas || dbContas.length === 0) {
-            const { data: newConta } = await supabase.from('contas_bancarias').insert([{ nome: 'Conta Principal', tipo: 'Pessoal' }]).select();
-            dbContas = newConta;
-          }
-          setContas(dbContas || []);
+          try {
+            // 1. Puxa Contas
+            let { data: dbContas, error: errContas } = await supabase.from('contas_bancarias').select('*');
+            if (errContas) throw new Error("Erro ao ler contas: " + errContas.message);
+            
+            if (!dbContas || dbContas.length === 0) {
+              const { data: newConta } = await supabase.from('contas_bancarias').insert([{ nome: 'Conta Principal', tipo: 'Pessoal' }]).select();
+              dbContas = newConta || [];
+            }
+            if(isMounted) setContas(dbContas);
 
-          // 2. Puxa Categorias e cria se não existirem
-          let { data: dbCats } = await supabase.from('categorias_financeiras').select('*');
-          if (!dbCats || dbCats.length === 0) {
-            const inserts = ALL_CATS.map(c => ({
-              nome: c, 
-              tipo: CATS_PESSOAL.includes(c) ? 'Pessoal' : 'Empresarial',
-              cor_hex: CAT_COLORS[c] || '#64748b'
-            }));
-            await supabase.from('categorias_financeiras').insert(inserts);
-            const { data: freshCats } = await supabase.from('categorias_financeiras').select('*');
-            dbCats = freshCats;
-          }
-          setCategorias(dbCats || []);
+            // 2. Puxa Categorias
+            let { data: dbCats, error: errCats } = await supabase.from('categorias_financeiras').select('*');
+            if (errCats) throw new Error("Erro ao ler categorias: " + errCats.message);
+            
+            if (!dbCats || dbCats.length === 0) {
+              const inserts = ALL_CATS.map(c => ({
+                nome: c, 
+                tipo: CATS_PESSOAL.includes(c) ? 'Pessoal' : 'Empresarial',
+                cor_hex: CAT_COLORS[c] || '#64748b'
+              }));
+              await supabase.from('categorias_financeiras').insert(inserts);
+              const { data: freshCats } = await supabase.from('categorias_financeiras').select('*');
+              dbCats = freshCats || [];
+            }
+            if(isMounted) setCategorias(dbCats);
 
-          // 3. Puxa Lançamentos
-          const { data: dbLancamentos } = await supabase.from('lancamentos').select('*, categorias_financeiras(nome), contas_bancarias(nome)');
-          setLancamentos(dbLancamentos || []);
-          
-          setLoading(false);
+            // 3. Puxa Lançamentos
+            const { data: dbLancamentos, error: errLanc } = await supabase.from('lancamentos').select('*, categorias_financeiras(nome), contas_bancarias(nome)');
+            if (errLanc) throw new Error("Erro ao ler lançamentos: " + errLanc.message);
+            
+            if(isMounted) {
+              setLancamentos(dbLancamentos || []);
+              setLoading(false);
+            }
+          } catch (e) {
+            console.error(e);
+            if(isMounted) {
+              setErro(e.message);
+              setLoading(false);
+            }
+          }
         }
         boot();
+
+        return () => { isMounted = false; };
       }, []);
 
-      // Funções de Banco de Dados
-      const addTransactions = async (txs) => {
-        const defaultConta = contas[0]?.id;
-        const mappedTxs = txs.map(t => {
-          const cat = categorias.find(c => c.nome === t.categoria);
-          const dateStr = `${CURRENT_YEAR}-${String(monthIdx + 1).padStart(2, '0')}-${String(t.data || 1).padStart(2, '0')}`;
-          return {
-            descricao: t.nome || 'Sem descrição',
-            valor: Number(t.valor),
-            tipo: 'Despesa',
-            status: t.pago ? 'Pago' : 'Pendente',
-            forma_pagamento: t.tipo || 'Outro',
-            data_vencimento: dateStr,
-            data_pagamento: t.pago ? dateStr : null,
-            categoria_id: cat ? cat.id : null,
-            conta_id: defaultConta
-          };
-        });
+      // Tela de Erro Visual (Substitui a Tela Branca)
+      if (erro) {
+        return (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#09090f", color:"#fff", fontFamily:"'Syne', sans-serif", flexDirection:"column", gap:16, padding: 20, textAlign: "center" }}>
+            <div style={{ fontSize:40 }}>⚠️</div>
+            <div style={{ fontSize:18, fontWeight: 'bold', color: "#f87171" }}>Ops! Ocorreu um erro no aplicativo.</div>
+            <div style={{ fontSize:14, color:"rgba(255,255,255,0.6)", background: "rgba(239,68,68,0.1)", padding: 16, borderRadius: 8, maxWidth: 600, wordBreak: "break-all" }}>
+              {erro}
+            </div>
+            <button onClick={() => window.location.reload()} style={{ background:"linear-gradient(135deg,#6366f1,#a855f7)", border:"none", borderRadius:12, color:"white", padding:"12px 24px", fontSize:14, fontWeight:700, cursor:"pointer", marginTop: 20 }}>Tentar Novamente</button>
+          </div>
+        );
+      }
 
-        const { data } = await supabase.from('lancamentos').insert(mappedTxs).select('*, categorias_financeiras(nome), contas_bancarias(nome)');
-        if (data) setLancamentos([...lancamentos, ...data]);
-      };
+      if (loading) return (
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#09090f", color:"#fff", fontFamily:"'Syne', sans-serif", flexDirection:"column", gap:16 }}>
+          <div style={{ fontSize:40, animation: "pulse 1.5s infinite" }}>🔄</div>
+          <div style={{ fontSize:14, color:"rgba(255,255,255,0.4)" }}>Sincronizando com Supabase...</div>
+          <style>{`@keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.5; } }`}</style>
+        </div>
+      );
 
-      const addReceita = async (rec) => {
-        const defaultConta = contas[0]?.id;
-        const dateStr = `${CURRENT_YEAR}-${String(monthIdx + 1).padStart(2, '0')}-${String(rec.data || 1).padStart(2, '0')}`;
-        
-        const payload = {
-          descricao: rec.nome,
-          valor: Number(rec.valor),
-          tipo: 'Receita',
-          status: 'Pago',
-          forma_pagamento: 'Pix',
-          data_vencimento: dateStr,
-          data_pagamento: dateStr,
-          conta_id: defaultConta
-        };
-
-        const { data } = await supabase.from('lancamentos').insert([payload]).select('*, categorias_financeiras(nome), contas_bancarias(nome)');
-        if (data) setLancamentos([...lancamentos, ...data]);
-      };
-
-      const deleteTx = async (id) => {
-        await supabase.from('lancamentos').delete().eq('id', id);
-        setLancamentos(lancamentos.filter(l => l.id !== id));
-      };
-
-      const updateTx = async (id, field, val) => {
-        // Mapeia os campos da UI pro Supabase
-        let dbField = field;
-        let dbVal = val;
-        
-        if (field === 'nome') dbField = 'descricao';
-        if (field === 'tipo') dbField = 'forma_pagamento';
-        if (field === 'pago') { dbField = 'status'; dbVal = val ? 'Pago' : 'Pendente'; }
-        if (field === 'categoria') {
-           dbField = 'categoria_id'; 
-           dbVal = categorias.find(c => c.nome === val)?.id;
-        }
-        if (field === 'data') {
-           dbField = 'data_vencimento';
-           dbVal = `${CURRENT_YEAR}-${String(monthIdx + 1).padStart(2, '0')}-${String(val).padStart(2, '0')}`;
-        }
-
-        const { data } = await supabase.from('lancamentos').update({ [dbField]: dbVal }).eq('id', id).select('*, categorias_financeiras(nome), contas_bancarias(nome)');
-        if (data && data.length > 0) {
-           setLancamentos(lancamentos.map(l => l.id === id ? data[0] : l));
-        }
-      };
-
-      // Processamento de Dados para a UI
+      // Processamento de Dados
       const currentFiltered = lancamentos.filter(l => {
+        if (!l.data_vencimento) return false;
         const lDate = new Date(l.data_vencimento + 'T00:00:00');
         const matchesMonth = lDate.getMonth() === monthIdx && lDate.getFullYear() === CURRENT_YEAR;
         const matchesConta = filtroContaId === "Todas" || l.conta_id === filtroContaId;
@@ -191,40 +167,27 @@
       const totalRec = monthRecs.reduce((s, r) => s + Number(r.valor || 0), 0);
       const saldo = totalRec - totalDesp;
 
-      if (loading) return (
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#09090f", color:"#fff", fontFamily:"'Syne', sans-serif", flexDirection:"column", gap:16 }}>
-          <div style={{ fontSize:40, animation: "pulse 1.5s infinite" }}>🔄</div>
-          <div style={{ fontSize:14, color:"rgba(255,255,255,0.4)" }}>Sincronizando com Supabase...</div>
-        </div>
-      );
-
       return (
         <div style={{ minHeight:"100vh", background:"#09090f", color:"#f4f0eb", fontFamily:"'Syne', sans-serif", display:"flex" }}>
           <style>{`
             * { box-sizing: border-box; margin:0; padding:0; }
             ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#333; border-radius:4px; }
             @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-            @keyframes spin { to { transform:rotate(360deg); } }
-            @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.5; } }
             .nav-item { transition: all 0.15s; cursor:pointer; }
             .nav-item:hover { background: rgba(255,255,255,0.06) !important; }
             .nav-item.active { background: rgba(99,102,241,0.2) !important; color: #818cf8 !important; }
             .card { transition: transform 0.2s, box-shadow 0.2s; }
             .card:hover { transform: translateY(-2px); }
-            .btn-primary { cursor:pointer; transition: all 0.15s; }
-            .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
-            .tx-row:hover { background: rgba(255,255,255,0.04) !important; }
             input, select { outline:none; }
             input:focus, select:focus { border-color: rgba(99,102,241,0.6) !important; }
           `}</style>
 
-          {/* ── SIDEBAR ── */}
+          {/* SIDEBAR */}
           <div style={{ width:240, background:"#0d0d18", borderRight:"1px solid rgba(255,255,255,0.05)", display:"flex", flexDirection:"column", padding:"24px 12px", position:"sticky", top:0, height:"100vh" }}>
             <div style={{ padding:"0 8px 20px", borderBottom:"1px solid rgba(255,255,255,0.05)", marginBottom:16 }}>
               <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-0.5px" }}>💼 Financeiro</div>
             </div>
 
-            {/* Filtro de Conta Global */}
             <div style={{ padding:"0 8px 16px", marginBottom:12, borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
               <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginBottom:6, textTransform:"uppercase", letterSpacing:1, fontFamily:"'JetBrains Mono', monospace" }}>Filtrar Conta</div>
               <select value={filtroContaId} onChange={e => setFiltroContaId(e.target.value)}
@@ -257,13 +220,13 @@
               </select>
             </div>
 
-            <button className="btn-primary" onClick={() => setScanOpen(true)}
-              style={{ margin:"8px 0 0", padding:"12px", background:"linear-gradient(135deg,#6366f1,#a855f7)", border:"none", borderRadius:12, color:"white", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            <button onClick={() => setScanOpen(true)}
+              style={{ margin:"8px 0 0", padding:"12px", background:"linear-gradient(135deg,#6366f1,#a855f7)", border:"none", borderRadius:12, color:"white", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:8, cursor:"pointer" }}>
               📸 Scan IA
             </button>
           </div>
 
-          {/* ── MAIN CONTENT ── */}
+          {/* MAIN CONTENT */}
           <div style={{ flex:1, overflow:"auto", animation:"fadeIn 0.3s ease" }}>
             <div style={{ padding:"20px 32px", borderBottom:"1px solid rgba(255,255,255,0.05)", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, background:"rgba(9,9,15,0.9)", backdropFilter:"blur(12px)", zIndex:10 }}>
               <div>
@@ -281,19 +244,18 @@
 
             <div style={{ padding:"28px 32px" }}>
               {view==="dashboard" && <Dashboard monthTxs={monthTxs} monthRecs={monthRecs} totalDesp={totalDesp} totalRec={totalRec} saldo={saldo} />}
-              {view==="lancamentos" && <Lancamentos txs={monthTxs} onDelete={deleteTx} onUpdate={updateTx}/>}
-              {view==="receitas" && <Receitas recs={monthRecs} onDelete={deleteTx} onAdd={addReceita}/>}
+              {view==="lancamentos" && <Lancamentos txs={monthTxs} />}
+              {view==="receitas" && <Receitas recs={monthRecs} />}
               {view==="categorias" && <Categorias txs={monthTxs} totalDesp={totalDesp}/>}
               {view==="anual" && <Anual lancamentos={lancamentos} />}
             </div>
           </div>
 
-          {scanOpen && <ScanModal onClose={() => setScanOpen(false)} onAdd={(txs) => { addTransactions(txs); setScanOpen(false); }} monthIdx={monthIdx}/>}
+          {scanOpen && <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}><div style={{ background:"#0f0f1a", border:"1px solid rgba(255,255,255,0.1)", borderRadius:20, padding: 40, textAlign: 'center', color: 'white' }}><div style={{ fontSize: 40, marginBottom: 16 }}>📱</div><h2 style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 8 }}>Mande a foto pelo Chat!</h2><p style={{ color: "rgba(255,255,255,0.6)", marginBottom: 20 }}>Como combinamos, envie a foto do comprovante para mim (IA) no chat, e eu injeto direto no Supabase para aparecer aqui automaticamente.</p><button onClick={() => setScanOpen(false)} style={{ background:"rgba(255,255,255,0.1)", border:"none", borderRadius:8, color:"white", padding:"10px 20px", cursor:"pointer" }}>Fechar</button></div></div>}
         </div>
       );
     }
 
-    /* ─── COMPONENTES SECUNDÁRIOS ────────────────────────────── */
     function StatPill({ label, value, color }) {
       return (
         <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 14px", textAlign:"center" }}>
@@ -308,9 +270,8 @@
       const tipoPieData = TIPOS.map(tp => ({ name:tp, valor: monthTxs.filter(t=>t.tipo===tp).reduce((s,t)=>s+Number(t.valor||0),0) })).filter(t=>t.valor>0);
       const TIPO_COLORS = ["#6366f1","#a855f7","#ec4899","#f59e0b","#22c55e"];
 
-      const last7 = monthTxs.reduce((acc,t) => { const k = t.data; acc[k] = (acc[k]||0)+Number(t.valor||0); return acc; }, {});
-      const lineData = Object.entries(last7).sort((a,b)=>Number(a[0])-Number(b[0])).map(([d,v])=>({ dia:d, valor:v }));
-      const recentTxs = [...monthTxs].sort((a,b)=>Number(b.data)-Number(a.data)).slice(0,5);
+      // Segurança: Verifica se o BarChart foi carregado antes de renderizar
+      const CanRenderCharts = typeof BarChart !== 'undefined';
 
       return (
         <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
@@ -333,7 +294,7 @@
           <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:16 }}>
             <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
               <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Gastos por Categoria</div>
-              {catTotals.length > 0 ? (
+              {catTotals.length > 0 && CanRenderCharts ? (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={catTotals.slice(0,8)} layout="vertical" margin={{left:0,right:20}}>
                     <XAxis type="number" hide/>
@@ -344,12 +305,12 @@
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-              ) : <Empty text="Nenhum lançamento no mês"/>}
+              ) : <Empty text="Aguardando dados..."/>}
             </div>
 
             <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
               <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Por Pagamento</div>
-              {tipoPieData.length > 0 ? (<>
+              {tipoPieData.length > 0 && CanRenderCharts ? (<>
                 <ResponsiveContainer width="100%" height={150}>
                   <PieChart>
                     <Pie data={tipoPieData} dataKey="valor" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65}>
@@ -366,95 +327,45 @@
                     </div>
                   ))}
                 </div>
-              </>) : <Empty text="Nenhum dado"/>}
+              </>) : <Empty text="Aguardando dados..."/>}
             </div>
           </div>
         </div>
       );
     }
 
-    function Lancamentos({ txs, onDelete, onUpdate }) {
-      const [search, setSearch] = useState("");
-      const [catFilter, setCatFilter] = useState("Todas");
-      const [editId, setEditId] = useState(null);
-
-      const filtered = txs.filter(t => (catFilter==="Todas" || t.categoria===catFilter) && (t.nome||"").toLowerCase().includes(search.toLowerCase())).sort((a,b)=>Number(b.data)-Number(a.data));
-      const total = filtered.reduce((s,t)=>s+Number(t.valor||0),0);
-
+    function Lancamentos({ txs }) {
       const inpS = { background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:7, color:"#f4f0eb", padding:"7px 10px", fontSize:13, width:"100%" };
-
       return (
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-          <div style={{ display:"flex", gap:12 }}>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar lançamento..." style={{ flex:1, ...inpS }}/>
-            <select value={catFilter} onChange={e=>setCatFilter(e.target.value)} style={{ ...inpS, width: "auto" }}>
-              <option style={{background:"#0d0d18"}}>Todas</option>
-              {ALL_CATS.map(c=><option key={c} style={{background:"#0d0d18"}}>{c}</option>)}
-            </select>
+          <div style={{ display:"grid", gridTemplateColumns:"2.5fr 60px 70px 110px 1fr 110px", gap:8, padding:"6px 12px", fontSize:10, color:"rgba(255,255,255,0.3)", textTransform:"uppercase", fontFamily:"'JetBrains Mono', monospace" }}>
+            <span>Nome</span><span>Pago</span><span>Dia</span><span>Tipo</span><span>Categoria</span><span style={{textAlign:"right"}}>Valor</span>
           </div>
-
-          <div style={{ display:"grid", gridTemplateColumns:"2.5fr 60px 70px 110px 1fr 110px 70px", gap:8, padding:"6px 12px", fontSize:10, color:"rgba(255,255,255,0.3)", textTransform:"uppercase", fontFamily:"'JetBrains Mono', monospace" }}>
-            <span>Nome</span><span>Pago</span><span>Dia</span><span>Tipo</span><span>Categoria</span><span style={{textAlign:"right"}}>Valor</span><span></span>
-          </div>
-
-          {filtered.length===0 ? <Empty text="Nenhum lançamento encontrado"/> : filtered.map(t => (
-            <div key={t.id} className="tx-row" style={{ display:"grid", gridTemplateColumns:"2.5fr 60px 70px 110px 1fr 110px 70px", gap:8, padding:"10px 12px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10, alignItems:"center" }}>
-              {editId===t.id ? (<>
-                <input value={t.nome} onChange={e=>onUpdate(t.id,"nome",e.target.value)} style={inpS}/>
-                <select value={t.pago} onChange={e=>onUpdate(t.id,"pago",e.target.value==="true")} style={inpS}>
-                  <option value="true">✅</option><option value="false">⏳</option>
-                </select>
-                <input type="number" value={t.data} onChange={e=>onUpdate(t.id,"data",e.target.value)} style={inpS} min={1} max={31}/>
-                <select value={t.tipo} onChange={e=>onUpdate(t.id,"tipo",e.target.value)} style={inpS}>
-                  {TIPOS.map(tp=><option key={tp} style={{background:"#0d0d18"}}>{tp}</option>)}
-                </select>
-                <select value={t.categoria} onChange={e=>onUpdate(t.id,"categoria",e.target.value)} style={inpS}>
-                  {ALL_CATS.map(c=><option key={c} style={{background:"#0d0d18"}}>{c}</option>)}
-                </select>
-                <input type="number" value={t.valor} onChange={e=>onUpdate(t.id,"valor",e.target.value)} style={{...inpS,textAlign:"right"}} step="0.01"/>
-              </>) : (<>
-                <div style={{ fontSize:13, fontWeight:500, overflow:"hidden", whiteSpace:"nowrap" }}>{t.nome}</div>
-                <div style={{ fontSize:12 }}>{t.pago?"✅":"⏳"}</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontFamily:"'JetBrains Mono'" }}>{t.data}</div>
-                <div style={{ fontSize:11, background:"rgba(255,255,255,0.06)", borderRadius:6, padding:"2px 8px", textAlign:"center" }}>{t.tipo}</div>
-                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                  <div style={{ width:8, height:8, borderRadius:"50%", background:CAT_COLORS[t.categoria]||"#64748b", flexShrink:0 }}/>
-                  <span style={{ fontSize:11, overflow:"hidden", whiteSpace:"nowrap" }}>{t.categoria}</span>
-                </div>
-                <div style={{ fontSize:14, fontWeight:700, color:"#f87171", textAlign:"right", fontFamily:"'JetBrains Mono'" }}>{fmt(t.valor)}</div>
-              </>)}
-              <div style={{ display:"flex", gap:4, justifyContent:"flex-end" }}>
-                <button onClick={()=>setEditId(editId===t.id?null:t.id)} style={{ background:"rgba(99,102,241,0.2)", borderRadius:6, color:"#818cf8", padding:"4px 8px", fontSize:12 }}>{editId===t.id?"✓":"✏️"}</button>
-                <button onClick={()=>onDelete(t.id)} style={{ background:"rgba(239,68,68,0.15)", borderRadius:6, color:"#f87171", padding:"4px 8px", fontSize:12 }}>✕</button>
+          {txs.length===0 ? <Empty text="Nenhum lançamento no mês selecionado"/> : txs.sort((a,b)=>Number(b.data)-Number(a.data)).map(t => (
+            <div key={t.id} style={{ display:"grid", gridTemplateColumns:"2.5fr 60px 70px 110px 1fr 110px", gap:8, padding:"10px 12px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10, alignItems:"center" }}>
+              <div style={{ fontSize:13, fontWeight:500, overflow:"hidden", whiteSpace:"nowrap" }}>{t.nome}</div>
+              <div style={{ fontSize:12 }}>{t.pago?"✅":"⏳"}</div>
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontFamily:"'JetBrains Mono'" }}>{t.data}</div>
+              <div style={{ fontSize:11, background:"rgba(255,255,255,0.06)", borderRadius:6, padding:"2px 8px", textAlign:"center" }}>{t.tipo}</div>
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:CAT_COLORS[t.categoria]||"#64748b", flexShrink:0 }}/>
+                <span style={{ fontSize:11, overflow:"hidden", whiteSpace:"nowrap" }}>{t.categoria}</span>
               </div>
+              <div style={{ fontSize:14, fontWeight:700, color:"#f87171", textAlign:"right", fontFamily:"'JetBrains Mono'" }}>{fmt(t.valor)}</div>
             </div>
           ))}
         </div>
       );
     }
 
-    function Receitas({ recs, onDelete, onAdd }) {
-      const [form, setForm] = useState({ nome:"", data:now.getDate(), valor:"" });
-      const total = recs.reduce((s,r)=>s+Number(r.valor||0),0);
-      const inpS = { background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:7, color:"#f4f0eb", padding:"7px 10px", fontSize:13, width:"100%" };
-
+    function Receitas({ recs }) {
       return (
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-          <div style={{ background:"rgba(34,197,94,0.05)", border:"1px solid rgba(34,197,94,0.15)", borderRadius:16, padding:20 }}>
-            <div style={{ fontSize:13, fontWeight:700, color:"#22c55e", marginBottom:14 }}>+ Nova Receita</div>
-            <div style={{ display:"grid", gridTemplateColumns:"2fr 80px 130px 100px", gap:10, alignItems:"end" }}>
-              <div><div style={{fontSize:10, color:"rgba(255,255,255,0.35)", marginBottom:4}}>Nome</div><input value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} style={inpS}/></div>
-              <div><div style={{fontSize:10, color:"rgba(255,255,255,0.35)", marginBottom:4}}>Dia</div><input type="number" value={form.data} onChange={e=>setForm({...form,data:e.target.value})} style={inpS}/></div>
-              <div><div style={{fontSize:10, color:"rgba(255,255,255,0.35)", marginBottom:4}}>Valor</div><input type="number" value={form.valor} onChange={e=>setForm({...form,valor:e.target.value})} style={{...inpS,color:"#22c55e"}}/></div>
-              <button onClick={() => { onAdd(form); setForm({nome:"", data:now.getDate(), valor:""}) }} style={{ background:"linear-gradient(135deg,#22c55e,#16a34a)", borderRadius:10, color:"white", padding:"10px", fontWeight:700 }}>Adicionar</button>
-            </div>
-          </div>
-          {recs.map(r => (
+          {recs.length===0 ? <Empty text="Nenhuma receita no mês selecionado"/> : recs.sort((a,b)=>Number(b.data)-Number(a.data)).map(r => (
             <div key={r.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10 }}>
               <div style={{ width:32, height:32, borderRadius:"50%", background:"rgba(34,197,94,0.15)", display:"flex", alignItems:"center", justifyContent:"center" }}>💵</div>
               <div style={{ flex:1 }}><div style={{ fontSize:14, fontWeight:600 }}>{r.nome}</div><div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>Dia {r.data}</div></div>
               <div style={{ fontSize:18, fontWeight:800, color:"#22c55e" }}>{fmt(r.valor)}</div>
-              <button onClick={()=>onDelete(r.id)} style={{ background:"rgba(239,68,68,0.15)", borderRadius:6, color:"#f87171", padding:"6px 10px", fontSize:12 }}>✕</button>
             </div>
           ))}
         </div>
@@ -470,7 +381,7 @@
 
       return (
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-          {catData.map(c => (
+          {catData.length === 0 ? <Empty text="Aguardando lançamentos..."/> : catData.map(c => (
             <div key={c.cat} style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:14, padding:"16px 20px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -492,77 +403,34 @@
     }
 
     function Anual({ lancamentos }) {
+      const CanRenderCharts = typeof window.Recharts !== 'undefined' && window.Recharts.BarChart;
       const monthSums = MONTHS.map((m,i) => {
-        const desp = lancamentos.filter(l => l.tipo==='Despesa' && new Date(l.data_vencimento).getMonth() === i).reduce((s,t)=>s+Number(t.valor),0);
-        const rec = lancamentos.filter(l => l.tipo==='Receita' && new Date(l.data_vencimento).getMonth() === i).reduce((s,t)=>s+Number(t.valor),0);
+        const desp = lancamentos.filter(l => l.data_vencimento && l.tipo==='Despesa' && new Date(l.data_vencimento+'T00:00:00').getMonth() === i).reduce((s,t)=>s+Number(t.valor),0);
+        const rec = lancamentos.filter(l => l.data_vencimento && l.tipo==='Receita' && new Date(l.data_vencimento+'T00:00:00').getMonth() === i).reduce((s,t)=>s+Number(t.valor),0);
         return { mes: MONTH_SHORT[i], desp, rec, saldo: rec-desp };
       });
 
       return (
         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
-          <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Resumo Anual</div>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={monthSums}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
-              <XAxis dataKey="mes" tick={{ fill:"rgba(255,255,255,0.4)", fontSize:11 }}/>
-              <YAxis tick={{ fill:"rgba(255,255,255,0.4)", fontSize:11 }}/>
-              <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", borderRadius:8 }}/>
-              <Bar dataKey="rec" fill="#22c55e" radius={[4,4,0,0]}/>
-              <Bar dataKey="desp" fill="#f87171" radius={[4,4,0,0]}/>
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Resumo Anual ({CURRENT_YEAR})</div>
+          {CanRenderCharts ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={monthSums}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
+                <XAxis dataKey="mes" tick={{ fill:"rgba(255,255,255,0.4)", fontSize:11 }}/>
+                <YAxis tick={{ fill:"rgba(255,255,255,0.4)", fontSize:11 }}/>
+                <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", borderRadius:8 }}/>
+                <Bar dataKey="rec" fill="#22c55e" radius={[4,4,0,0]}/>
+                <Bar dataKey="desp" fill="#f87171" radius={[4,4,0,0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <Empty text="Carregando gráficos..."/>}
         </div>
       );
     }
 
     function Empty({ text }) {
       return <div style={{ textAlign:"center", padding:"40px 20px", color:"rgba(255,255,255,0.2)", fontSize:13 }}><div style={{ fontSize:32, marginBottom:8 }}>📭</div>{text}</div>;
-    }
-
-    // O modal original manteve-se igualzinho visualmente, apenas enviará para o Supabase ao clicar "Confirmar"
-    function ScanModal({ onClose, onAdd, monthIdx }) {
-      const [step, setStep] = useState("upload");
-      const [expenses, setExpenses] = useState([]);
-      
-      const simulateProcess = () => {
-        setStep("processing");
-        setTimeout(() => {
-          setExpenses([{ id:1, nome: "Mercado Novo", data: 15, tipo: "Cartão 01", categoria: "Mercado", valor: 150.50, pago: true }]);
-          setStep("review");
-        }, 1500);
-      };
-
-      const inpS = { background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:7, color:"#f4f0eb", padding:"7px 10px", fontSize:11, width:"100%" };
-
-      return (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-          <div style={{ background:"#0f0f1a", border:"1px solid rgba(255,255,255,0.1)", borderRadius:20, width:"100%", maxWidth:780, maxHeight:"90vh", overflow:"auto", display:"flex", flexDirection:"column" }}>
-            <div style={{ padding:"20px 24px", borderBottom:"1px solid rgba(255,255,255,0.07)", display:"flex", justifyContent:"space-between" }}>
-              <div style={{ fontSize:18, fontWeight:800 }}>{step==="upload"?"📸 Escanear Extrato":step==="processing"?"🤖 Processando...":"✅ Revise os Lançamentos"}</div>
-              <button onClick={onClose} style={{ background:"rgba(255,255,255,0.06)", borderRadius:8, color:"rgba(255,255,255,0.5)", padding:"6px 12px" }}>✕</button>
-            </div>
-            <div style={{ padding:24 }}>
-              {step==="upload" && <div onClick={simulateProcess} style={{ border:`2px dashed rgba(255,255,255,0.12)`, borderRadius:16, padding:"60px 40px", textAlign:"center", cursor:"pointer" }}>📄<br/>Clique para simular leitura da IA (Anthropic)</div>}
-              {step==="processing" && <div style={{ textAlign:"center", padding:"60px 0" }}><div style={{ fontSize:24, animation:"spin 1s infinite" }}>🔄</div></div>}
-              {step==="review" && (
-                <div>
-                  {expenses.map((e,idx) => (
-                    <div key={idx} style={{ display:"grid", gridTemplateColumns:"2fr 55px 60px 110px 1fr 100px", gap:6, padding:"8px", background:"rgba(255,255,255,0.03)", borderRadius:8 }}>
-                      <input value={e.nome} onChange={ev=>setExpenses(expenses.map((ex,i)=>i===idx?{...ex,nome:ev.target.value}:ex))} style={inpS}/>
-                      <select value={e.pago} onChange={ev=>setExpenses(expenses.map((ex,i)=>i===idx?{...ex,pago:ev.target.value==="true"}:ex))} style={inpS}><option value="true">✅</option><option value="false">⏳</option></select>
-                      <input type="number" value={e.data} onChange={ev=>setExpenses(expenses.map((ex,i)=>i===idx?{...ex,data:ev.target.value}:ex))} style={inpS}/>
-                      <select value={e.tipo} style={inpS}><option>Pix</option><option>Cartão 01</option></select>
-                      <select value={e.categoria} style={inpS}><option>Mercado</option><option>Outros</option></select>
-                      <input type="number" value={e.valor} style={inpS}/>
-                    </div>
-                  ))}
-                  <button onClick={() => onAdd(expenses)} style={{ marginTop: 20, width: "100%", background:"linear-gradient(135deg,#6366f1,#a855f7)", borderRadius:12, color:"white", padding:"12px", fontWeight:700 }}>Confirmar e Salvar no Supabase</button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      );
     }
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
