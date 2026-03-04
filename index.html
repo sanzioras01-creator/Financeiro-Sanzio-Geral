@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Financeiro Pro</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
@@ -14,13 +14,13 @@
   
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
 </head>
-<body>
+<body class="bg-[#09090f] text-[#f4f0eb] font-['Syne'] overflow-hidden">
   <div id="root"></div>
 
   <script type="text/babel">
     const { useState, useEffect, useRef, useCallback } = React;
     
-    // Proteção contra carregamento lento da biblioteca de gráficos (Evita Tela Branca)
+    // Proteção contra carregamento lento da biblioteca de gráficos
     const Recharts = window.Recharts || {};
     const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } = Recharts;
 
@@ -46,6 +46,14 @@
       "Impostos/Taxas (Empresa)":"#166534","Aluguel Comercial":"#052e16","Despesas Empresariais":"#4ade80",
     };
 
+    const NAV_ITEMS = [
+      { id:"dashboard", icon:"▦", label:"Dashboard" },
+      { id:"lancamentos", icon:"↕", label:"Lançamentos" },
+      { id:"receitas", icon:"↑", label:"Receitas" },
+      { id:"categorias", icon:"◎", label:"Categorias" },
+      { id:"anual", icon:"⊞", label:"Anual" },
+    ];
+
     const fmt = (v) => "R$ " + Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
     const now = new Date();
     const CURRENT_YEAR = now.getFullYear();
@@ -62,80 +70,57 @@
       const [filtroContaId, setFiltroContaId] = useState("Todas");
       
       const [loading, setLoading] = useState(true);
-      const [erro, setErro] = useState(null); // O Escudo Anti-Tela Branca
+      const [erro, setErro] = useState(null);
       const [scanOpen, setScanOpen] = useState(false);
 
       useEffect(() => {
         let isMounted = true;
-
         async function boot() {
           try {
-            // 1. Puxa Contas
             let { data: dbContas, error: errContas } = await supabase.from('contas_bancarias').select('*');
             if (errContas) throw new Error("Erro ao ler contas: " + errContas.message);
-            
             if (!dbContas || dbContas.length === 0) {
               const { data: newConta } = await supabase.from('contas_bancarias').insert([{ nome: 'Conta Principal', tipo: 'Pessoal' }]).select();
               dbContas = newConta || [];
             }
             if(isMounted) setContas(dbContas);
 
-            // 2. Puxa Categorias
             let { data: dbCats, error: errCats } = await supabase.from('categorias_financeiras').select('*');
             if (errCats) throw new Error("Erro ao ler categorias: " + errCats.message);
-            
             if (!dbCats || dbCats.length === 0) {
-              const inserts = ALL_CATS.map(c => ({
-                nome: c, 
-                tipo: CATS_PESSOAL.includes(c) ? 'Pessoal' : 'Empresarial',
-                cor_hex: CAT_COLORS[c] || '#64748b'
-              }));
+              const inserts = ALL_CATS.map(c => ({ nome: c, tipo: CATS_PESSOAL.includes(c) ? 'Pessoal' : 'Empresarial', cor_hex: CAT_COLORS[c] || '#64748b' }));
               await supabase.from('categorias_financeiras').insert(inserts);
               const { data: freshCats } = await supabase.from('categorias_financeiras').select('*');
               dbCats = freshCats || [];
             }
             if(isMounted) setCategorias(dbCats);
 
-            // 3. Puxa Lançamentos
             const { data: dbLancamentos, error: errLanc } = await supabase.from('lancamentos').select('*, categorias_financeiras(nome), contas_bancarias(nome)');
             if (errLanc) throw new Error("Erro ao ler lançamentos: " + errLanc.message);
             
-            if(isMounted) {
-              setLancamentos(dbLancamentos || []);
-              setLoading(false);
-            }
+            if(isMounted) { setLancamentos(dbLancamentos || []); setLoading(false); }
           } catch (e) {
             console.error(e);
-            if(isMounted) {
-              setErro(e.message);
-              setLoading(false);
-            }
+            if(isMounted) { setErro(e.message); setLoading(false); }
           }
         }
         boot();
-
         return () => { isMounted = false; };
       }, []);
 
-      // Tela de Erro Visual (Substitui a Tela Branca)
-      if (erro) {
-        return (
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#09090f", color:"#fff", fontFamily:"'Syne', sans-serif", flexDirection:"column", gap:16, padding: 20, textAlign: "center" }}>
-            <div style={{ fontSize:40 }}>⚠️</div>
-            <div style={{ fontSize:18, fontWeight: 'bold', color: "#f87171" }}>Ops! Ocorreu um erro no aplicativo.</div>
-            <div style={{ fontSize:14, color:"rgba(255,255,255,0.6)", background: "rgba(239,68,68,0.1)", padding: 16, borderRadius: 8, maxWidth: 600, wordBreak: "break-all" }}>
-              {erro}
-            </div>
-            <button onClick={() => window.location.reload()} style={{ background:"linear-gradient(135deg,#6366f1,#a855f7)", border:"none", borderRadius:12, color:"white", padding:"12px 24px", fontSize:14, fontWeight:700, cursor:"pointer", marginTop: 20 }}>Tentar Novamente</button>
-          </div>
-        );
-      }
+      if (erro) return (
+        <div className="flex items-center justify-center h-screen flex-col gap-4 p-5 text-center">
+          <div className="text-4xl">⚠️</div>
+          <div className="text-xl font-bold text-red-400">Ops! Ocorreu um erro no aplicativo.</div>
+          <div className="text-sm text-white/60 bg-red-500/10 p-4 rounded-lg max-w-lg break-all">{erro}</div>
+          <button onClick={() => window.location.reload()} className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl text-white px-6 py-3 text-sm font-bold mt-4">Tentar Novamente</button>
+        </div>
+      );
 
       if (loading) return (
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#09090f", color:"#fff", fontFamily:"'Syne', sans-serif", flexDirection:"column", gap:16 }}>
-          <div style={{ fontSize:40, animation: "pulse 1.5s infinite" }}>🔄</div>
-          <div style={{ fontSize:14, color:"rgba(255,255,255,0.4)" }}>Sincronizando com Supabase...</div>
-          <style>{`@keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.5; } }`}</style>
+        <div className="flex items-center justify-center h-screen flex-col gap-4">
+          <div className="text-4xl animate-pulse">🔄</div>
+          <div className="text-sm text-white/40">Sincronizando com Supabase...</div>
         </div>
       );
 
@@ -143,124 +128,123 @@
       const currentFiltered = lancamentos.filter(l => {
         if (!l.data_vencimento) return false;
         const lDate = new Date(l.data_vencimento + 'T00:00:00');
-        const matchesMonth = lDate.getMonth() === monthIdx && lDate.getFullYear() === CURRENT_YEAR;
-        const matchesConta = filtroContaId === "Todas" || l.conta_id === filtroContaId;
-        return matchesMonth && matchesConta;
+        return lDate.getMonth() === monthIdx && lDate.getFullYear() === CURRENT_YEAR && (filtroContaId === "Todas" || l.conta_id === filtroContaId);
       });
 
       const monthTxs = currentFiltered.filter(l => l.tipo === 'Despesa').map(l => ({
-        ...l, 
-        nome: l.descricao, 
-        data: parseInt(l.data_vencimento.split('-')[2]),
-        tipo: l.forma_pagamento,
-        categoria: l.categorias_financeiras?.nome || 'Outros',
-        pago: l.status === 'Pago'
+        ...l, nome: l.descricao, data: parseInt(l.data_vencimento.split('-')[2]), tipo: l.forma_pagamento, categoria: l.categorias_financeiras?.nome || 'Outros', pago: l.status === 'Pago'
       }));
 
       const monthRecs = currentFiltered.filter(l => l.tipo === 'Receita').map(l => ({
-        ...l, 
-        nome: l.descricao, 
-        data: parseInt(l.data_vencimento.split('-')[2])
+        ...l, nome: l.descricao, data: parseInt(l.data_vencimento.split('-')[2])
       }));
 
       const totalDesp = monthTxs.reduce((s, t) => s + Number(t.valor || 0), 0);
       const totalRec = monthRecs.reduce((s, r) => s + Number(r.valor || 0), 0);
       const saldo = totalRec - totalDesp;
 
+      // Estilos genéricos p/ inputs
+      const inpClass = "bg-white/5 border border-white/10 rounded-md text-[#f4f0eb] p-2 text-xs md:text-sm font-['Syne'] w-full focus:border-indigo-400 focus:outline-none";
+
       return (
-        <div style={{ minHeight:"100vh", background:"#09090f", color:"#f4f0eb", fontFamily:"'Syne', sans-serif", display:"flex" }}>
-          <style>{`
-            * { box-sizing: border-box; margin:0; padding:0; }
-            ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#333; border-radius:4px; }
-            @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-            .nav-item { transition: all 0.15s; cursor:pointer; }
-            .nav-item:hover { background: rgba(255,255,255,0.06) !important; }
-            .nav-item.active { background: rgba(99,102,241,0.2) !important; color: #818cf8 !important; }
-            .card { transition: transform 0.2s, box-shadow 0.2s; }
-            .card:hover { transform: translateY(-2px); }
-            input, select { outline:none; }
-            input:focus, select:focus { border-color: rgba(99,102,241,0.6) !important; }
-          `}</style>
-
-          {/* SIDEBAR */}
-          <div style={{ width:240, background:"#0d0d18", borderRight:"1px solid rgba(255,255,255,0.05)", display:"flex", flexDirection:"column", padding:"24px 12px", position:"sticky", top:0, height:"100vh" }}>
-            <div style={{ padding:"0 8px 20px", borderBottom:"1px solid rgba(255,255,255,0.05)", marginBottom:16 }}>
-              <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-0.5px" }}>💼 Financeiro</div>
-            </div>
-
-            <div style={{ padding:"0 8px 16px", marginBottom:12, borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginBottom:6, textTransform:"uppercase", letterSpacing:1, fontFamily:"'JetBrains Mono', monospace" }}>Filtrar Conta</div>
-              <select value={filtroContaId} onChange={e => setFiltroContaId(e.target.value)}
-                style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color:"#f4f0eb", padding:"8px 10px", fontSize:12, fontFamily:"'Syne', sans-serif", cursor:"pointer" }}>
-                <option value="Todas" style={{ background:"#0d0d18" }}>Todas as Contas</option>
-                {contas.map(c => <option key={c.id} value={c.id} style={{ background:"#0d0d18" }}>{c.nome}</option>)}
+        <div className="flex flex-col md:flex-row h-screen">
+          
+          {/* ── SIDEBAR (DESKTOP) ── */}
+          <div className="hidden md:flex flex-col w-64 bg-[#0d0d18] border-r border-white/5 p-6 sticky top-0 h-screen shrink-0">
+            <div className="pb-5 border-b border-white/5 mb-4"><div className="text-2xl font-extrabold tracking-tight">💼 Financeiro</div></div>
+            <div className="pb-4 mb-3 border-b border-white/5">
+              <div className="text-[10px] text-white/40 mb-1.5 uppercase tracking-widest font-['JetBrains_Mono']">Filtrar Conta</div>
+              <select value={filtroContaId} onChange={e => setFiltroContaId(e.target.value)} className={inpClass}>
+                <option value="Todas" className="bg-[#0d0d18]">Todas as Contas</option>
+                {contas.map(c => <option key={c.id} value={c.id} className="bg-[#0d0d18]">{c.nome}</option>)}
               </select>
             </div>
-
-            {[
-              { id:"dashboard", icon:"▦", label:"Dashboard" },
-              { id:"lancamentos", icon:"↕", label:"Lançamentos" },
-              { id:"receitas", icon:"↑", label:"Receitas" },
-              { id:"categorias", icon:"◎", label:"Por Categoria" },
-              { id:"anual", icon:"⊞", label:"Visão Anual" },
-            ].map(n => (
-              <div key={n.id} className={`nav-item ${view===n.id?"active":""}`} onClick={() => setView(n.id)}
-                style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, marginBottom:4, color: view===n.id?"#818cf8":"rgba(255,255,255,0.5)", fontSize:13, fontWeight:600 }}>
-                <span style={{ fontFamily:"monospace", fontSize:16 }}>{n.icon}</span> {n.label}
+            {NAV_ITEMS.map(n => (
+              <div key={n.id} onClick={() => setView(n.id)} className={`flex items-center gap-3 p-3 rounded-xl mb-1 cursor-pointer transition-colors text-sm font-semibold ${view===n.id ? 'bg-indigo-500/20 text-indigo-400' : 'text-white/50 hover:bg-white/5'}`}>
+                <span className="font-mono text-lg">{n.icon}</span> {n.label}
               </div>
             ))}
-
-            <div style={{ flex:1 }}/>
-
-            <div style={{ padding:"12px 8px", borderTop:"1px solid rgba(255,255,255,0.05)" }}>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginBottom:6, textTransform:"uppercase", letterSpacing:1, fontFamily:"'JetBrains Mono', monospace" }}>Mês Ativo</div>
-              <select value={monthIdx} onChange={e => setMonthIdx(Number(e.target.value))}
-                style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color:"#f4f0eb", padding:"8px 10px", fontSize:13, cursor:"pointer" }}>
-                {MONTHS.map((m,i) => <option key={m} value={i} style={{ background:"#0d0d18" }}>{m}</option>)}
+            <div className="flex-1"/>
+            <div className="pt-3 border-t border-white/5">
+              <div className="text-[10px] text-white/40 mb-1.5 uppercase tracking-widest font-['JetBrains_Mono']">Mês Ativo</div>
+              <select value={monthIdx} onChange={e => setMonthIdx(Number(e.target.value))} className={inpClass}>
+                {MONTHS.map((m,i) => <option key={m} value={i} className="bg-[#0d0d18]">{m}</option>)}
               </select>
             </div>
-
-            <button onClick={() => setScanOpen(true)}
-              style={{ margin:"8px 0 0", padding:"12px", background:"linear-gradient(135deg,#6366f1,#a855f7)", border:"none", borderRadius:12, color:"white", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:8, cursor:"pointer" }}>
-              📸 Scan IA
-            </button>
+            <button onClick={() => setScanOpen(true)} className="mt-3 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl text-white p-3 text-sm font-bold flex items-center justify-center gap-2 hover:brightness-110 transition-all">📸 Scan IA</button>
           </div>
 
-          {/* MAIN CONTENT */}
-          <div style={{ flex:1, overflow:"auto", animation:"fadeIn 0.3s ease" }}>
-            <div style={{ padding:"20px 32px", borderBottom:"1px solid rgba(255,255,255,0.05)", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, background:"rgba(9,9,15,0.9)", backdropFilter:"blur(12px)", zIndex:10 }}>
+          {/* ── TOPBAR (MOBILE) ── */}
+          <div className="md:hidden flex flex-col gap-3 p-4 bg-[#0d0d18] border-b border-white/5 sticky top-0 z-40 shrink-0">
+            <div className="flex justify-between items-center">
+              <div className="text-xl font-extrabold tracking-tight">💼 Financeiro</div>
+              <button onClick={() => setScanOpen(true)} className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg text-white px-3 py-1.5 text-xs font-bold">📸 Scan IA</button>
+            </div>
+            <div className="flex gap-2">
+              <select value={filtroContaId} onChange={e => setFiltroContaId(e.target.value)} className={inpClass}>
+                <option value="Todas" className="bg-[#0d0d18]">Todas as Contas</option>
+                {contas.map(c => <option key={c.id} value={c.id} className="bg-[#0d0d18]">{c.nome}</option>)}
+              </select>
+              <select value={monthIdx} onChange={e => setMonthIdx(Number(e.target.value))} className={inpClass}>
+                {MONTHS.map((m,i) => <option key={m} value={i} className="bg-[#0d0d18]">{m}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* ── MAIN CONTENT ── */}
+          <div className="flex-1 overflow-y-auto pb-24 md:pb-0 animate-[fadeIn_0.3s_ease]">
+            <div className="hidden md:flex p-6 md:px-8 border-b border-white/5 items-center justify-between sticky top-0 bg-[#09090f]/90 backdrop-blur-md z-10">
               <div>
-                <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-0.5px" }}>
-                  {view==="dashboard"&&"Dashboard"}{view==="lancamentos"&&"Lançamentos"}{view==="receitas"&&"Receitas"}{view==="categorias"&&"Por Categoria"}{view==="anual"&&"Visão Anual"}
-                </div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:2, fontFamily:"'JetBrains Mono', monospace" }}>{MONTHS[monthIdx]} {CURRENT_YEAR}</div>
+                <div className="text-2xl font-extrabold tracking-tight">{NAV_ITEMS.find(n=>n.id===view)?.label || 'App'}</div>
+                <div className="text-xs text-white/30 mt-1 font-['JetBrains_Mono']">{MONTHS[monthIdx]} {CURRENT_YEAR}</div>
               </div>
-              <div style={{ display:"flex", gap:12 }}>
+              <div className="flex gap-3">
                 <StatPill label="Receitas" value={fmt(totalRec)} color="#22c55e"/>
                 <StatPill label="Despesas" value={fmt(totalDesp)} color="#f87171"/>
                 <StatPill label="Saldo" value={fmt(saldo)} color={saldo>=0?"#22c55e":"#f87171"}/>
               </div>
             </div>
 
-            <div style={{ padding:"28px 32px" }}>
+            {/* Mobile Header Title (Shows inside content on mobile) */}
+            <div className="md:hidden px-4 pt-6 pb-2">
+              <div className="text-2xl font-extrabold">{NAV_ITEMS.find(n=>n.id===view)?.label || 'App'}</div>
+              <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
+                <StatPill label="Rec" value={fmt(totalRec)} color="#22c55e"/>
+                <StatPill label="Desp" value={fmt(totalDesp)} color="#f87171"/>
+                <StatPill label="Saldo" value={fmt(saldo)} color={saldo>=0?"#22c55e":"#f87171"}/>
+              </div>
+            </div>
+
+            <div className="p-4 md:p-8">
               {view==="dashboard" && <Dashboard monthTxs={monthTxs} monthRecs={monthRecs} totalDesp={totalDesp} totalRec={totalRec} saldo={saldo} />}
-              {view==="lancamentos" && <Lancamentos txs={monthTxs} />}
-              {view==="receitas" && <Receitas recs={monthRecs} />}
+              {view==="lancamentos" && <Lancamentos txs={monthTxs} inpClass={inpClass} />}
+              {view==="receitas" && <Receitas recs={monthRecs} inpClass={inpClass} />}
               {view==="categorias" && <Categorias txs={monthTxs} totalDesp={totalDesp}/>}
               {view==="anual" && <Anual lancamentos={lancamentos} />}
             </div>
           </div>
 
-          {scanOpen && <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}><div style={{ background:"#0f0f1a", border:"1px solid rgba(255,255,255,0.1)", borderRadius:20, padding: 40, textAlign: 'center', color: 'white' }}><div style={{ fontSize: 40, marginBottom: 16 }}>📱</div><h2 style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 8 }}>Mande a foto pelo Chat!</h2><p style={{ color: "rgba(255,255,255,0.6)", marginBottom: 20 }}>Como combinamos, envie a foto do comprovante para mim (IA) no chat, e eu injeto direto no Supabase para aparecer aqui automaticamente.</p><button onClick={() => setScanOpen(false)} style={{ background:"rgba(255,255,255,0.1)", border:"none", borderRadius:8, color:"white", padding:"10px 20px", cursor:"pointer" }}>Fechar</button></div></div>}
+          {/* ── BOTTOM NAV (MOBILE) ── */}
+          <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#0d0d18] border-t border-white/5 flex justify-around items-center p-2 z-50 pb-safe">
+            {NAV_ITEMS.map(n => (
+              <div key={n.id} onClick={() => setView(n.id)} className={`flex flex-col items-center p-2 rounded-xl transition-colors ${view===n.id ? 'text-indigo-400' : 'text-white/40'}`}>
+                <span className="font-mono text-xl mb-1">{n.icon}</span>
+                <span className="text-[10px] font-semibold">{n.label.split(' ')[0]}</span>
+              </div>
+            ))}
+          </div>
+
+          {scanOpen && <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"><div className="bg-[#0f0f1a] border border-white/10 rounded-2xl p-8 text-center text-white max-w-sm w-full"><div className="text-5xl mb-4">📱</div><h2 className="text-xl font-bold mb-2">Mande a foto pelo Chat!</h2><p className="text-white/60 mb-6 text-sm">Como combinamos, envie a foto do comprovante para mim (IA) no chat, e eu injeto direto no Supabase para aparecer aqui automaticamente.</p><button onClick={() => setScanOpen(false)} className="bg-white/10 border border-white/10 rounded-xl text-white px-6 py-2 w-full font-semibold">Fechar</button></div></div>}
         </div>
       );
     }
 
+    /* ─── COMPONENTES SECUNDÁRIOS ────────────────────────────── */
     function StatPill({ label, value, color }) {
       return (
-        <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 14px", textAlign:"center" }}>
-          <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", letterSpacing:0.8, fontFamily:"'JetBrains Mono', monospace" }}>{label}</div>
-          <div style={{ fontSize:15, fontWeight:700, color, marginTop:2 }}>{value}</div>
+        <div className="bg-white/5 border border-white/10 rounded-xl p-2 md:px-4 md:py-2 text-center flex-1 md:flex-none min-w-[90px]">
+          <div className="text-[9px] md:text-[10px] text-white/40 uppercase tracking-widest font-['JetBrains_Mono']">{label}</div>
+          <div className="text-xs md:text-sm font-bold mt-1" style={{color}}>{value}</div>
         </div>
       );
     }
@@ -269,103 +253,110 @@
       const catTotals = ALL_CATS.map(c => ({ name:c, valor: monthTxs.filter(t=>t.categoria===c).reduce((s,t)=>s+Number(t.valor||0),0) })).filter(c=>c.valor>0).sort((a,b)=>b.valor-a.valor);
       const tipoPieData = TIPOS.map(tp => ({ name:tp, valor: monthTxs.filter(t=>t.tipo===tp).reduce((s,t)=>s+Number(t.valor||0),0) })).filter(t=>t.valor>0);
       const TIPO_COLORS = ["#6366f1","#a855f7","#ec4899","#f59e0b","#22c55e"];
-
-      // Segurança: Verifica se o BarChart foi carregado antes de renderizar
       const CanRenderCharts = typeof BarChart !== 'undefined';
 
       return (
-        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16 }}>
+        <div className="flex flex-col gap-4 md:gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             {[
-              { label:"Total Despesas", value:fmt(totalDesp), sub:`${monthTxs.length} lançamentos`, color:"#f87171", icon:"💸" },
-              { label:"Total Receitas", value:fmt(totalRec), sub:`${monthRecs.length} entradas`, color:"#22c55e", icon:"💵" },
-              { label:"Saldo do Mês", value:fmt(saldo), sub: saldo>=0?"Positivo 🎉":"Atenção ⚠️", color:saldo>=0?"#22c55e":"#f87171", icon:"⚖️" },
-              { label:"Maior Gasto", value: catTotals[0] ? fmt(catTotals[0].valor) : "R$ 0,00", sub:catTotals[0]?.name||"—", color:"#a855f7", icon:"📊" },
+              { label:"Despesas", value:fmt(totalDesp), sub:`${monthTxs.length} lanç.`, color:"#f87171", icon:"💸" },
+              { label:"Receitas", value:fmt(totalRec), sub:`${monthRecs.length} ent.`, color:"#22c55e", icon:"💵" },
+              { label:"Saldo", value:fmt(saldo), sub: saldo>=0?"Positivo 🎉":"Atenção ⚠️", color:saldo>=0?"#22c55e":"#f87171", icon:"⚖️" },
+              { label:"Maior Gasto", value: catTotals[0] ? fmt(catTotals[0].valor) : "R$ 0", sub:catTotals[0]?.name?.substring(0,12)||"—", color:"#a855f7", icon:"📊" },
             ].map(k => (
-              <div key={k.label} className="card" style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
-                <div style={{ fontSize:24, marginBottom:8 }}>{k.icon}</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", letterSpacing:0.8, fontFamily:"'JetBrains Mono', monospace", marginBottom:4 }}>{k.label}</div>
-                <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.value}</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:4 }}>{k.sub}</div>
+              <div key={k.label} className="bg-white/5 border border-white/10 rounded-2xl p-4 transition-transform hover:-translate-y-1">
+                <div className="text-xl md:text-2xl mb-2">{k.icon}</div>
+                <div className="text-[9px] md:text-[11px] text-white/40 uppercase tracking-widest font-['JetBrains_Mono'] mb-1">{k.label}</div>
+                <div className="text-sm md:text-lg font-extrabold" style={{color:k.color}}>{k.value}</div>
+                <div className="text-[10px] text-white/40 mt-1 truncate">{k.sub}</div>
               </div>
             ))}
           </div>
 
-          <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:16 }}>
-            <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
-              <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Gastos por Categoria</div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+            <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6">
+              <div className="text-sm font-bold text-white/60 mb-4">Gastos por Categoria</div>
               {catTotals.length > 0 && CanRenderCharts ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={catTotals.slice(0,8)} layout="vertical" margin={{left:0,right:20}}>
-                    <XAxis type="number" hide/>
-                    <YAxis type="category" dataKey="name" width={140} tick={{ fill:"rgba(255,255,255,0.5)", fontSize:11 }}/>
-                    <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8 }} labelStyle={{ color:"#fff" }}/>
-                    <Bar dataKey="valor" radius={[0,6,6,0]}>
-                      {catTotals.slice(0,8).map((e,i) => <Cell key={i} fill={CAT_COLORS[e.name]||"#6366f1"}/>)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <Empty text="Aguardando dados..."/>}
+                <div className="h-52 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={catTotals.slice(0,8)} layout="vertical" margin={{left:0,right:20}}>
+                      <XAxis type="number" hide/>
+                      <YAxis type="category" dataKey="name" width={110} tick={{ fill:"rgba(255,255,255,0.5)", fontSize:10 }}/>
+                      <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8 }} labelStyle={{ color:"#fff" }}/>
+                      <Bar dataKey="valor" radius={[0,6,6,0]}>
+                        {catTotals.slice(0,8).map((e,i) => <Cell key={i} fill={CAT_COLORS[e.name]||"#6366f1"}/>)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <Empty text="Sem lançamentos"/>}
             </div>
 
-            <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
-              <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Por Pagamento</div>
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6">
+              <div className="text-sm font-bold text-white/60 mb-4">Por Pagamento</div>
               {tipoPieData.length > 0 && CanRenderCharts ? (<>
-                <ResponsiveContainer width="100%" height={150}>
-                  <PieChart>
-                    <Pie data={tipoPieData} dataKey="valor" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65}>
-                      {tipoPieData.map((e,i) => <Cell key={i} fill={TIPO_COLORS[i%TIPO_COLORS.length]}/>)}
-                    </Pie>
-                    <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8 }}/>
-                  </PieChart>
-                </ResponsiveContainer>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:8 }}>
+                <div className="h-36 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={tipoPieData} dataKey="valor" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={60}>
+                        {tipoPieData.map((e,i) => <Cell key={i} fill={TIPO_COLORS[i%TIPO_COLORS.length]}/>)}
+                      </Pie>
+                      <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8 }}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-4 justify-center">
                   {tipoPieData.map((t,i) => (
-                    <div key={t.name} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"rgba(255,255,255,0.5)" }}>
-                      <div style={{ width:8, height:8, borderRadius:"50%", background:TIPO_COLORS[i%TIPO_COLORS.length] }}/>
-                      {t.name}
+                    <div key={t.name} className="flex items-center gap-1.5 text-[10px] text-white/50 bg-white/5 px-2 py-1 rounded-md">
+                      <div className="w-2 h-2 rounded-full" style={{background:TIPO_COLORS[i%TIPO_COLORS.length]}}/>{t.name}
                     </div>
                   ))}
                 </div>
-              </>) : <Empty text="Aguardando dados..."/>}
+              </>) : <Empty text="Sem dados"/>}
             </div>
           </div>
         </div>
       );
     }
 
-    function Lancamentos({ txs }) {
-      const inpS = { background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:7, color:"#f4f0eb", padding:"7px 10px", fontSize:13, width:"100%" };
+    function Lancamentos({ txs, inpClass }) {
       return (
-        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-          <div style={{ display:"grid", gridTemplateColumns:"2.5fr 60px 70px 110px 1fr 110px", gap:8, padding:"6px 12px", fontSize:10, color:"rgba(255,255,255,0.3)", textTransform:"uppercase", fontFamily:"'JetBrains Mono', monospace" }}>
-            <span>Nome</span><span>Pago</span><span>Dia</span><span>Tipo</span><span>Categoria</span><span style={{textAlign:"right"}}>Valor</span>
-          </div>
-          {txs.length===0 ? <Empty text="Nenhum lançamento no mês selecionado"/> : txs.sort((a,b)=>Number(b.data)-Number(a.data)).map(t => (
-            <div key={t.id} style={{ display:"grid", gridTemplateColumns:"2.5fr 60px 70px 110px 1fr 110px", gap:8, padding:"10px 12px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10, alignItems:"center" }}>
-              <div style={{ fontSize:13, fontWeight:500, overflow:"hidden", whiteSpace:"nowrap" }}>{t.nome}</div>
-              <div style={{ fontSize:12 }}>{t.pago?"✅":"⏳"}</div>
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontFamily:"'JetBrains Mono'" }}>{t.data}</div>
-              <div style={{ fontSize:11, background:"rgba(255,255,255,0.06)", borderRadius:6, padding:"2px 8px", textAlign:"center" }}>{t.tipo}</div>
-              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                <div style={{ width:8, height:8, borderRadius:"50%", background:CAT_COLORS[t.categoria]||"#64748b", flexShrink:0 }}/>
-                <span style={{ fontSize:11, overflow:"hidden", whiteSpace:"nowrap" }}>{t.categoria}</span>
+        <div className="flex flex-col gap-4">
+          <div className="overflow-x-auto pb-4">
+            <div className="min-w-[650px] md:min-w-0">
+              <div className="grid grid-cols-[2fr_50px_50px_90px_1fr_90px] gap-2 p-2 px-3 text-[10px] text-white/30 uppercase tracking-widest font-['JetBrains_Mono'] border-b border-white/5 mb-2">
+                <span>Nome</span><span className="text-center">Pago</span><span className="text-center">Dia</span><span>Tipo</span><span>Categoria</span><span className="text-right">Valor</span>
               </div>
-              <div style={{ fontSize:14, fontWeight:700, color:"#f87171", textAlign:"right", fontFamily:"'JetBrains Mono'" }}>{fmt(t.valor)}</div>
+              {txs.length===0 ? <Empty text="Nenhum lançamento no mês"/> : txs.sort((a,b)=>Number(b.data)-Number(a.data)).map(t => (
+                <div key={t.id} className="grid grid-cols-[2fr_50px_50px_90px_1fr_90px] gap-2 p-3 bg-white/5 border border-white/5 rounded-xl items-center mb-2 hover:bg-white/10 transition-colors">
+                  <div className="text-xs md:text-sm font-semibold truncate">{t.nome}</div>
+                  <div className="text-center text-xs">{t.pago?"✅":"⏳"}</div>
+                  <div className="text-xs text-white/50 text-center font-['JetBrains_Mono']">{t.data}</div>
+                  <div className="text-[10px] md:text-xs bg-white/10 rounded-md px-2 py-1 text-center truncate">{t.tipo}</div>
+                  <div className="flex items-center gap-2 truncate">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{background:CAT_COLORS[t.categoria]||"#64748b"}}/>
+                    <span className="text-[10px] md:text-xs truncate">{t.categoria}</span>
+                  </div>
+                  <div className="text-xs md:text-sm font-bold text-red-400 text-right font-['JetBrains_Mono']">{fmt(t.valor)}</div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       );
     }
 
-    function Receitas({ recs }) {
+    function Receitas({ recs, inpClass }) {
       return (
-        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-          {recs.length===0 ? <Empty text="Nenhuma receita no mês selecionado"/> : recs.sort((a,b)=>Number(b.data)-Number(a.data)).map(r => (
-            <div key={r.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10 }}>
-              <div style={{ width:32, height:32, borderRadius:"50%", background:"rgba(34,197,94,0.15)", display:"flex", alignItems:"center", justifyContent:"center" }}>💵</div>
-              <div style={{ flex:1 }}><div style={{ fontSize:14, fontWeight:600 }}>{r.nome}</div><div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>Dia {r.data}</div></div>
-              <div style={{ fontSize:18, fontWeight:800, color:"#22c55e" }}>{fmt(r.valor)}</div>
+        <div className="flex flex-col gap-4">
+          {recs.length===0 ? <Empty text="Nenhuma receita no mês"/> : recs.sort((a,b)=>Number(b.data)-Number(a.data)).map(r => (
+            <div key={r.id} className="flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-white/5 border border-white/5 rounded-xl">
+              <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-lg shrink-0">💵</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm md:text-base font-bold truncate">{r.nome}</div>
+                <div className="text-xs text-white/40">Dia {r.data}</div>
+              </div>
+              <div className="text-base md:text-lg font-extrabold text-green-400 font-['JetBrains_Mono']">{fmt(r.valor)}</div>
             </div>
           ))}
         </div>
@@ -380,21 +371,21 @@
       }).filter(c=>c.valor>0).sort((a,b)=>b.valor-a.valor);
 
       return (
-        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        <div className="flex flex-col gap-3 md:gap-4">
           {catData.length === 0 ? <Empty text="Aguardando lançamentos..."/> : catData.map(c => (
-            <div key={c.cat} style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:14, padding:"16px 20px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:12, height:12, borderRadius:3, background:CAT_COLORS[c.cat]||"#64748b" }}/>
-                  <div style={{ fontSize:14, fontWeight:700 }}>{c.cat}</div>
+            <div key={c.cat} className="bg-white/5 border border-white/5 rounded-xl p-4 md:p-5">
+              <div className="flex justify-between mb-3 items-center">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="w-3 h-3 rounded-sm shrink-0" style={{background:CAT_COLORS[c.cat]||"#64748b"}}/>
+                  <div className="text-sm md:text-base font-bold truncate max-w-[150px] md:max-w-none">{c.cat}</div>
                 </div>
-                <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-                  <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{c.pct}%</span>
-                  <span style={{ fontSize:17, fontWeight:800, color:"#f87171" }}>{fmt(c.valor)}</span>
+                <div className="flex items-center gap-3 md:gap-4">
+                  <span className="text-[10px] md:text-xs text-white/40">{c.pct}%</span>
+                  <span className="text-sm md:text-lg font-bold text-red-400 font-['JetBrains_Mono']">{fmt(c.valor)}</span>
                 </div>
               </div>
-              <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:6, height:6, overflow:"hidden" }}>
-                <div style={{ width:`${c.pct}%`, height:"100%", background:CAT_COLORS[c.cat]||"#6366f1", borderRadius:6 }}/>
+              <div className="bg-white/10 rounded-full h-1.5 md:h-2 w-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500" style={{width:`${c.pct}%`, background:CAT_COLORS[c.cat]||"#6366f1"}}/>
               </div>
             </div>
           ))}
@@ -411,26 +402,30 @@
       });
 
       return (
-        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
-          <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Resumo Anual ({CURRENT_YEAR})</div>
-          {CanRenderCharts ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={monthSums}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
-                <XAxis dataKey="mes" tick={{ fill:"rgba(255,255,255,0.4)", fontSize:11 }}/>
-                <YAxis tick={{ fill:"rgba(255,255,255,0.4)", fontSize:11 }}/>
-                <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", borderRadius:8 }}/>
-                <Bar dataKey="rec" fill="#22c55e" radius={[4,4,0,0]}/>
-                <Bar dataKey="desp" fill="#f87171" radius={[4,4,0,0]}/>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <Empty text="Carregando gráficos..."/>}
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6 overflow-x-auto">
+          <div className="text-sm font-bold text-white/60 mb-6">Resumo Anual ({CURRENT_YEAR})</div>
+          <div className="min-w-[500px]">
+            {CanRenderCharts ? (
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthSums}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
+                    <XAxis dataKey="mes" tick={{ fill:"rgba(255,255,255,0.4)", fontSize:10 }}/>
+                    <YAxis tick={{ fill:"rgba(255,255,255,0.4)", fontSize:10 }}/>
+                    <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", borderRadius:8, border:"none" }}/>
+                    <Bar dataKey="rec" name="Receitas" fill="#22c55e" radius={[4,4,0,0]}/>
+                    <Bar dataKey="desp" name="Despesas" fill="#f87171" radius={[4,4,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <Empty text="Carregando gráficos..."/>}
+          </div>
         </div>
       );
     }
 
     function Empty({ text }) {
-      return <div style={{ textAlign:"center", padding:"40px 20px", color:"rgba(255,255,255,0.2)", fontSize:13 }}><div style={{ fontSize:32, marginBottom:8 }}>📭</div>{text}</div>;
+      return <div className="text-center p-8 text-white/20"><div className="text-4xl mb-2">📭</div><div className="text-xs md:text-sm">{text}</div></div>;
     }
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
