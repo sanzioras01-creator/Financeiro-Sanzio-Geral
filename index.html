@@ -1,435 +1,742 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Financeiro Pro</title>
-  
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
-  
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Financeiro Sanzio</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f172a;
+    --bg2: #1e293b;
+    --bg3: #334155;
+    --text: #f1f5f9;
+    --text2: #94a3b8;
+    --accent: #38bdf8;
+    --green: #4ade80;
+    --red: #f87171;
+    --orange: #fb923c;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --radius: 16px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .loading-screen {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999; transition: opacity .4s;
+  }
+  .loading-screen.hide { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--bg3);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Header */
+  .header {
+    padding: 20px 16px 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header .mes-selector {
+    background: var(--bg2); border: 1px solid var(--bg3);
+    color: var(--text); padding: 6px 12px; border-radius: 8px;
+    font-family: inherit; font-size: 13px; cursor: pointer;
+  }
+
+  /* KPI Cards */
+  .kpi-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px; padding: 0 16px 16px;
+  }
+  .kpi {
+    background: var(--bg2); border-radius: var(--radius);
+    padding: 14px; position: relative; overflow: hidden;
+  }
+  .kpi::before {
+    content: ''; position: absolute; top: 0; left: 0;
+    width: 4px; height: 100%; border-radius: 4px 0 0 4px;
+  }
+  .kpi.receita::before { background: var(--green); }
+  .kpi.despesa::before { background: var(--red); }
+  .kpi.saldo::before { background: var(--accent); }
+  .kpi.fixas::before { background: var(--orange); }
+  .kpi-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+  .kpi-value { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 600; }
+  .kpi-value.pos { color: var(--green); }
+  .kpi-value.neg { color: var(--red); }
+  .kpi.full { grid-column: 1 / -1; }
+
+  /* Section */
+  .section { padding: 0 16px 16px; }
+  .section-title {
+    font-size: 14px; font-weight: 600; color: var(--text2);
+    text-transform: uppercase; letter-spacing: .5px;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-title span { font-size: 16px; }
+
+  /* Chart Container */
+  .chart-card {
+    background: var(--bg2); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 12px;
+  }
+  .chart-card h3 { font-size: 13px; color: var(--text2); margin-bottom: 12px; }
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* Transaction List */
+  .tx-list { display: flex; flex-direction: column; gap: 6px; }
+  .tx-item {
+    background: var(--bg2); border-radius: 12px;
+    padding: 12px 14px; display: flex; align-items: center; gap: 12px;
+    transition: background .2s;
+  }
+  .tx-item:active { background: var(--bg3); }
+  .tx-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .tx-info { flex: 1; min-width: 0; }
+  .tx-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tx-meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .tx-valor { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; text-align: right; flex-shrink: 0; }
+  .tx-valor.desp { color: var(--red); }
+  .tx-valor.rec { color: var(--green); }
+  .tx-badge {
+    display: inline-block; font-size: 9px; padding: 1px 5px;
+    border-radius: 4px; font-weight: 600; margin-left: 4px;
+  }
+  .tx-badge.fixa { background: rgba(251,146,60,.2); color: var(--orange); }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto;
+    padding-bottom: 4px; -webkit-overflow-scrolling: touch;
+  }
+  .filter-bar::-webkit-scrollbar { display: none; }
+  .filter-btn {
+    background: var(--bg2); border: 1px solid var(--bg3);
+    color: var(--text2); padding: 6px 12px; border-radius: 20px;
+    font-size: 12px; font-family: inherit; white-space: nowrap;
+    cursor: pointer; transition: all .2s;
+  }
+  .filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+
+  /* Fixas table */
+  .fixas-grid { display: flex; flex-direction: column; gap: 6px; }
+  .fixa-item {
+    background: var(--bg2); border-radius: 12px;
+    padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .fixa-left { display: flex; align-items: center; gap: 10px; }
+  .fixa-status {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+  .fixa-status.pago { background: var(--green); }
+  .fixa-status.pendente { background: var(--red); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  .fixa-name { font-size: 13px; font-weight: 500; }
+  .fixa-cat { font-size: 11px; color: var(--text2); }
+  .fixa-valor { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--orange); }
+
+  /* Category breakdown */
+  .cat-item {
+    background: var(--bg2); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 6px;
+  }
+  .cat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .cat-name { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .cat-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .cat-valor { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; }
+  .cat-bar { height: 4px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+  .cat-bar-fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
+  .cat-pct { font-size: 11px; color: var(--text2); margin-top: 4px; }
+
+  /* Annual view */
+  .annual-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .month-card {
+    background: var(--bg2); border-radius: 12px; padding: 10px; text-align: center;
+    cursor: pointer; transition: all .2s;
+  }
+  .month-card:hover { background: var(--bg3); }
+  .month-card.active { border: 1px solid var(--accent); }
+  .month-label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .month-desp { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--red); }
+  .month-rec { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green); }
+  .month-saldo { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; margin-top: 2px; }
+
+  /* Bottom Nav */
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg2); border-top: 1px solid var(--bg3);
+    display: flex; justify-content: space-around; align-items: center;
+    padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    z-index: 100;
+  }
+  .nav-item {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 2px; font-size: 10px; color: var(--text2);
+    cursor: pointer; padding: 4px 12px; transition: color .2s;
+    background: none; border: none; font-family: inherit;
+  }
+  .nav-item.active { color: var(--accent); }
+  .nav-item .nav-icon { font-size: 20px; }
+
+  /* Page visibility */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Search */
+  .search-box {
+    background: var(--bg2); border: 1px solid var(--bg3);
+    border-radius: 10px; padding: 10px 14px;
+    color: var(--text); font-family: inherit; font-size: 14px;
+    width: 100%; margin-bottom: 12px; outline: none;
+  }
+  .search-box:focus { border-color: var(--accent); }
+  .search-box::placeholder { color: var(--text2); }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center; padding: 40px 20px; color: var(--text2);
+  }
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 4px; }
+</style>
 </head>
-<body class="bg-[#09090f] text-[#f4f0eb] font-['Syne'] overflow-hidden">
-  <div id="root"></div>
+<body>
 
-  <script type="text/babel">
-    const { useState, useEffect, useRef, useCallback } = React;
-    
-    // Proteção contra carregamento lento da biblioteca de gráficos
-    const Recharts = window.Recharts || {};
-    const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } = Recharts;
+<div class="loading-screen" id="loadingScreen">
+  <div class="spinner"></div>
+</div>
 
-    /* ─── CREDENCIAIS SUPABASE ──────────────────────────────── */
-    const SUPABASE_URL = 'https://wqajkohquvoukljpkqet.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxYWprb2hxdXZvdWtsanBrcWV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NzIzNjIsImV4cCI6MjA4ODE0ODM2Mn0.-GsT75uLNZJJuFErpYjvOZ0lNJWlrg2qHpNUhGqUgus';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<!-- ========== DASHBOARD ========== -->
+<div class="page active" id="pageDash">
+  <div class="header">
+    <h1>💰 Financeiro</h1>
+    <select class="mes-selector" id="mesSel" onchange="carregarDados()"></select>
+  </div>
 
-    /* ─── CONSTANTES DA UI ──────────────────────────────────── */
-    const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-    const MONTH_SHORT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  <div class="kpi-grid">
+    <div class="kpi receita">
+      <div class="kpi-label">Receitas</div>
+      <div class="kpi-value pos" id="kpiRec">R$ 0</div>
+    </div>
+    <div class="kpi despesa">
+      <div class="kpi-label">Despesas</div>
+      <div class="kpi-value neg" id="kpiDesp">R$ 0</div>
+    </div>
+    <div class="kpi fixas">
+      <div class="kpi-label">Fixas do Mês</div>
+      <div class="kpi-value" id="kpiFixas" style="color:var(--orange)">R$ 0</div>
+    </div>
+    <div class="kpi saldo">
+      <div class="kpi-label">Saldo</div>
+      <div class="kpi-value" id="kpiSaldo">R$ 0</div>
+    </div>
+  </div>
 
-    const CATS_PESSOAL = ["Moradia","Financiamento","Mercado","Transporte/Gasolina","Vestuário","Assinaturas","Saúde e Beleza","Despesas eventuais","Autoaperfeiçoamento","Lazer","Outros"];
-    const CATS_EMPRESA = ["Folha de Pagamento","Fornecedores","Marketing/Publicidade","Impostos/Taxas (Empresa)","Aluguel Comercial","Despesas Empresariais"];
-    const ALL_CATS = [...CATS_PESSOAL, ...CATS_EMPRESA];
-    const TIPOS = ["Cartão 01","Cartão 02","Pix","Débito/Boleto","Dinheiro"];
+  <div class="section">
+    <div class="chart-card">
+      <h3>Despesas por Categoria</h3>
+      <div class="chart-wrap"><canvas id="chartCat"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Evolução Diária (Despesas)</h3>
+      <div class="chart-wrap"><canvas id="chartDia"></canvas></div>
+    </div>
+  </div>
 
-    const CAT_COLORS = {
-      "Moradia":"#6366f1","Financiamento":"#8b5cf6","Mercado":"#ec4899","Transporte/Gasolina":"#f59e0b",
-      "Vestuário":"#10b981","Assinaturas":"#3b82f6","Saúde e Beleza":"#f472b6","Despesas eventuais":"#ef4444",
-      "Autoaperfeiçoamento":"#14b8a6","Lazer":"#a855f7","Outros":"#64748b",
-      "Folha de Pagamento":"#22c55e","Fornecedores":"#16a34a","Marketing/Publicidade":"#15803d",
-      "Impostos/Taxas (Empresa)":"#166534","Aluguel Comercial":"#052e16","Despesas Empresariais":"#4ade80",
-    };
+  <div class="section">
+    <div class="section-title"><span>📋</span> Últimos Lançamentos</div>
+    <div class="tx-list" id="ultimosTx"></div>
+  </div>
+</div>
 
-    const NAV_ITEMS = [
-      { id:"dashboard", icon:"▦", label:"Dashboard" },
-      { id:"lancamentos", icon:"↕", label:"Lançamentos" },
-      { id:"receitas", icon:"↑", label:"Receitas" },
-      { id:"categorias", icon:"◎", label:"Categorias" },
-      { id:"anual", icon:"⊞", label:"Anual" },
-    ];
+<!-- ========== LANÇAMENTOS ========== -->
+<div class="page" id="pageLanc">
+  <div class="header">
+    <h1>📋 Lançamentos</h1>
+    <select class="mes-selector" id="mesSel2" onchange="syncMes(this.value)"></select>
+  </div>
+  <div class="section">
+    <input type="text" class="search-box" id="searchLanc" placeholder="Buscar lançamento..." oninput="renderLancamentos()">
+    <div class="filter-bar" id="filterBar"></div>
+    <div class="tx-list" id="listLanc"></div>
+  </div>
+</div>
 
-    const fmt = (v) => "R$ " + Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
-    const now = new Date();
-    const CURRENT_YEAR = now.getFullYear();
-    const CURRENT_MONTH_IDX = now.getMonth();
+<!-- ========== FIXAS ========== -->
+<div class="page" id="pageFixas">
+  <div class="header">
+    <h1>📌 Despesas Fixas</h1>
+  </div>
+  <div class="section">
+    <div class="kpi-grid" style="margin-bottom:16px;">
+      <div class="kpi fixas full">
+        <div class="kpi-label">Total Fixas Mensais</div>
+        <div class="kpi-value" id="kpiFixasTotal" style="color:var(--orange)">R$ 0</div>
+      </div>
+    </div>
+    <div class="fixas-grid" id="listFixas"></div>
+  </div>
+</div>
 
-    /* ─── APP PRINCIPAL ─────────────────────────────────────── */
-    function App() {
-      const [lancamentos, setLancamentos] = useState([]);
-      const [categorias, setCategorias] = useState([]);
-      const [contas, setContas] = useState([]);
-      
-      const [view, setView] = useState("dashboard");
-      const [monthIdx, setMonthIdx] = useState(CURRENT_MONTH_IDX);
-      const [filtroContaId, setFiltroContaId] = useState("Todas");
-      
-      const [loading, setLoading] = useState(true);
-      const [erro, setErro] = useState(null);
-      const [scanOpen, setScanOpen] = useState(false);
+<!-- ========== CATEGORIAS ========== -->
+<div class="page" id="pageCat">
+  <div class="header">
+    <h1>📊 Categorias</h1>
+    <select class="mes-selector" id="mesSel3" onchange="syncMes(this.value)"></select>
+  </div>
+  <div class="section" id="listCat"></div>
+</div>
 
-      useEffect(() => {
-        let isMounted = true;
-        async function boot() {
-          try {
-            let { data: dbContas, error: errContas } = await supabase.from('contas_bancarias').select('*');
-            if (errContas) throw new Error("Erro ao ler contas: " + errContas.message);
-            if (!dbContas || dbContas.length === 0) {
-              const { data: newConta } = await supabase.from('contas_bancarias').insert([{ nome: 'Conta Principal', tipo: 'Pessoal' }]).select();
-              dbContas = newConta || [];
-            }
-            if(isMounted) setContas(dbContas);
+<!-- ========== ANUAL ========== -->
+<div class="page" id="pageAnual">
+  <div class="header">
+    <h1>📈 Visão Anual</h1>
+  </div>
+  <div class="section">
+    <div class="chart-card">
+      <h3>Despesas vs Receitas por Mês</h3>
+      <div class="chart-wrap" style="height:250px;"><canvas id="chartAnual"></canvas></div>
+    </div>
+    <div class="annual-grid" id="gridAnual"></div>
+  </div>
+</div>
 
-            let { data: dbCats, error: errCats } = await supabase.from('categorias_financeiras').select('*');
-            if (errCats) throw new Error("Erro ao ler categorias: " + errCats.message);
-            if (!dbCats || dbCats.length === 0) {
-              const inserts = ALL_CATS.map(c => ({ nome: c, tipo: CATS_PESSOAL.includes(c) ? 'Pessoal' : 'Empresarial', cor_hex: CAT_COLORS[c] || '#64748b' }));
-              await supabase.from('categorias_financeiras').insert(inserts);
-              const { data: freshCats } = await supabase.from('categorias_financeiras').select('*');
-              dbCats = freshCats || [];
-            }
-            if(isMounted) setCategorias(dbCats);
+<!-- ========== BOTTOM NAV ========== -->
+<nav class="bottom-nav">
+  <button class="nav-item active" onclick="navTo('pageDash',this)">
+    <span class="nav-icon">📊</span>Dashboard
+  </button>
+  <button class="nav-item" onclick="navTo('pageLanc',this)">
+    <span class="nav-icon">📋</span>Lançamentos
+  </button>
+  <button class="nav-item" onclick="navTo('pageFixas',this)">
+    <span class="nav-icon">📌</span>Fixas
+  </button>
+  <button class="nav-item" onclick="navTo('pageCat',this)">
+    <span class="nav-icon">🏷️</span>Categorias
+  </button>
+  <button class="nav-item" onclick="navTo('pageAnual',this)">
+    <span class="nav-icon">📈</span>Anual
+  </button>
+</nav>
 
-            const { data: dbLancamentos, error: errLanc } = await supabase.from('lancamentos').select('*, categorias_financeiras(nome), contas_bancarias(nome)');
-            if (errLanc) throw new Error("Erro ao ler lançamentos: " + errLanc.message);
-            
-            if(isMounted) { setLancamentos(dbLancamentos || []); setLoading(false); }
-          } catch (e) {
-            console.error(e);
-            if(isMounted) { setErro(e.message); setLoading(false); }
-          }
-        }
-        boot();
-        return () => { isMounted = false; };
-      }, []);
+<script>
+// ========== CONFIG ==========
+const SUPA_URL = 'https://wqajkohquvoukljpkqet.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxYWprb2hxdXZvdWtsanBrcWV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NzIzNjIsImV4cCI6MjA4ODE0ODM2Mn0.-GsT75uLNZJJuFErpYjvOZ0lNJWlrg2qHpNUhGqUgus';
 
-      if (erro) return (
-        <div className="flex items-center justify-center h-screen flex-col gap-4 p-5 text-center">
-          <div className="text-4xl">⚠️</div>
-          <div className="text-xl font-bold text-red-400">Ops! Ocorreu um erro no aplicativo.</div>
-          <div className="text-sm text-white/60 bg-red-500/10 p-4 rounded-lg max-w-lg break-all">{erro}</div>
-          <button onClick={() => window.location.reload()} className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl text-white px-6 py-3 text-sm font-bold mt-4">Tentar Novamente</button>
-        </div>
-      );
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
-      if (loading) return (
-        <div className="flex items-center justify-center h-screen flex-col gap-4">
-          <div className="text-4xl animate-pulse">🔄</div>
-          <div className="text-sm text-white/40">Sincronizando com Supabase...</div>
-        </div>
-      );
+const ICON_CAT = {
+  'Moradia': '🏠', 'Mercado': '🛒', 'Transporte/Gasolina': '⛽',
+  'Lazer': '🎉', 'Assinaturas': '📺', 'Saúde e Beleza': '💊',
+  'Autoaperfeiçoamento': '📚', 'Folha de Pagamento': '👷',
+  'Despesas eventuais': '💸', 'Receita': '💵'
+};
 
-      // Processamento de Dados
-      const currentFiltered = lancamentos.filter(l => {
-        if (!l.data_vencimento) return false;
-        const lDate = new Date(l.data_vencimento + 'T00:00:00');
-        return lDate.getMonth() === monthIdx && lDate.getFullYear() === CURRENT_YEAR && (filtroContaId === "Todas" || l.conta_id === filtroContaId);
-      });
+let lancamentos = [];
+let categorias = [];
+let mesAtual = new Date().getMonth(); // 0-indexed
+let anoAtual = 2026;
+let filtroCategoria = 'todas';
 
-      const monthTxs = currentFiltered.filter(l => l.tipo === 'Despesa').map(l => ({
-        ...l, nome: l.descricao, data: parseInt(l.data_vencimento.split('-')[2]), tipo: l.forma_pagamento, categoria: l.categorias_financeiras?.nome || 'Outros', pago: l.status === 'Pago'
-      }));
+// Charts
+let chartCat = null;
+let chartDia = null;
+let chartAnual = null;
 
-      const monthRecs = currentFiltered.filter(l => l.tipo === 'Receita').map(l => ({
-        ...l, nome: l.descricao, data: parseInt(l.data_vencimento.split('-')[2])
-      }));
+// ========== SUPABASE FETCH ==========
+async function supaFetch(table, query = '') {
+  const url = `${SUPA_URL}/rest/v1/${table}?${query}`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': `Bearer ${SUPA_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    console.error(`Erro ao buscar ${table}:`, e);
+    return [];
+  }
+}
 
-      const totalDesp = monthTxs.reduce((s, t) => s + Number(t.valor || 0), 0);
-      const totalRec = monthRecs.reduce((s, r) => s + Number(r.valor || 0), 0);
-      const saldo = totalRec - totalDesp;
+// ========== INIT ==========
+async function init() {
+  // Preencher seletores de mês
+  const selectors = [document.getElementById('mesSel'), document.getElementById('mesSel2'), document.getElementById('mesSel3')];
+  selectors.forEach(sel => {
+    if (!sel) return;
+    sel.innerHTML = '';
+    MESES.forEach((m, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = m + ' ' + anoAtual;
+      if (i === mesAtual) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  });
 
-      // Estilos genéricos p/ inputs
-      const inpClass = "bg-white/5 border border-white/10 rounded-md text-[#f4f0eb] p-2 text-xs md:text-sm font-['Syne'] w-full focus:border-indigo-400 focus:outline-none";
+  // Carregar categorias
+  categorias = await supaFetch('categorias_financeiras', 'order=nome.asc');
 
-      return (
-        <div className="flex flex-col md:flex-row h-screen">
-          
-          {/* ── SIDEBAR (DESKTOP) ── */}
-          <div className="hidden md:flex flex-col w-64 bg-[#0d0d18] border-r border-white/5 p-6 sticky top-0 h-screen shrink-0">
-            <div className="pb-5 border-b border-white/5 mb-4"><div className="text-2xl font-extrabold tracking-tight">💼 Financeiro</div></div>
-            <div className="pb-4 mb-3 border-b border-white/5">
-              <div className="text-[10px] text-white/40 mb-1.5 uppercase tracking-widest font-['JetBrains_Mono']">Filtrar Conta</div>
-              <select value={filtroContaId} onChange={e => setFiltroContaId(e.target.value)} className={inpClass}>
-                <option value="Todas" className="bg-[#0d0d18]">Todas as Contas</option>
-                {contas.map(c => <option key={c.id} value={c.id} className="bg-[#0d0d18]">{c.nome}</option>)}
-              </select>
-            </div>
-            {NAV_ITEMS.map(n => (
-              <div key={n.id} onClick={() => setView(n.id)} className={`flex items-center gap-3 p-3 rounded-xl mb-1 cursor-pointer transition-colors text-sm font-semibold ${view===n.id ? 'bg-indigo-500/20 text-indigo-400' : 'text-white/50 hover:bg-white/5'}`}>
-                <span className="font-mono text-lg">{n.icon}</span> {n.label}
-              </div>
-            ))}
-            <div className="flex-1"/>
-            <div className="pt-3 border-t border-white/5">
-              <div className="text-[10px] text-white/40 mb-1.5 uppercase tracking-widest font-['JetBrains_Mono']">Mês Ativo</div>
-              <select value={monthIdx} onChange={e => setMonthIdx(Number(e.target.value))} className={inpClass}>
-                {MONTHS.map((m,i) => <option key={m} value={i} className="bg-[#0d0d18]">{m}</option>)}
-              </select>
-            </div>
-            <button onClick={() => setScanOpen(true)} className="mt-3 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl text-white p-3 text-sm font-bold flex items-center justify-center gap-2 hover:brightness-110 transition-all">📸 Scan IA</button>
-          </div>
+  // Carregar todos os lançamentos do ano
+  lancamentos = await supaFetch('lancamentos', `select=*,categorias_financeiras(nome,cor_hex,tipo)&data_vencimento=gte.${anoAtual}-01-01&data_vencimento=lte.${anoAtual}-12-31&order=data_vencimento.desc`);
 
-          {/* ── TOPBAR (MOBILE) ── */}
-          <div className="md:hidden flex flex-col gap-3 p-4 bg-[#0d0d18] border-b border-white/5 sticky top-0 z-40 shrink-0">
-            <div className="flex justify-between items-center">
-              <div className="text-xl font-extrabold tracking-tight">💼 Financeiro</div>
-              <button onClick={() => setScanOpen(true)} className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg text-white px-3 py-1.5 text-xs font-bold">📸 Scan IA</button>
-            </div>
-            <div className="flex gap-2">
-              <select value={filtroContaId} onChange={e => setFiltroContaId(e.target.value)} className={inpClass}>
-                <option value="Todas" className="bg-[#0d0d18]">Todas as Contas</option>
-                {contas.map(c => <option key={c.id} value={c.id} className="bg-[#0d0d18]">{c.nome}</option>)}
-              </select>
-              <select value={monthIdx} onChange={e => setMonthIdx(Number(e.target.value))} className={inpClass}>
-                {MONTHS.map((m,i) => <option key={m} value={i} className="bg-[#0d0d18]">{m}</option>)}
-              </select>
-            </div>
-          </div>
+  document.getElementById('loadingScreen').classList.add('hide');
+  carregarDados();
+  carregarAnual();
+  carregarFixas();
+}
 
-          {/* ── MAIN CONTENT ── */}
-          <div className="flex-1 overflow-y-auto pb-24 md:pb-0 animate-[fadeIn_0.3s_ease]">
-            <div className="hidden md:flex p-6 md:px-8 border-b border-white/5 items-center justify-between sticky top-0 bg-[#09090f]/90 backdrop-blur-md z-10">
-              <div>
-                <div className="text-2xl font-extrabold tracking-tight">{NAV_ITEMS.find(n=>n.id===view)?.label || 'App'}</div>
-                <div className="text-xs text-white/30 mt-1 font-['JetBrains_Mono']">{MONTHS[monthIdx]} {CURRENT_YEAR}</div>
-              </div>
-              <div className="flex gap-3">
-                <StatPill label="Receitas" value={fmt(totalRec)} color="#22c55e"/>
-                <StatPill label="Despesas" value={fmt(totalDesp)} color="#f87171"/>
-                <StatPill label="Saldo" value={fmt(saldo)} color={saldo>=0?"#22c55e":"#f87171"}/>
-              </div>
-            </div>
+function syncMes(val) {
+  mesAtual = parseInt(val);
+  document.querySelectorAll('.mes-selector').forEach(s => s.value = mesAtual);
+  carregarDados();
+}
 
-            {/* Mobile Header Title (Shows inside content on mobile) */}
-            <div className="md:hidden px-4 pt-6 pb-2">
-              <div className="text-2xl font-extrabold">{NAV_ITEMS.find(n=>n.id===view)?.label || 'App'}</div>
-              <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                <StatPill label="Rec" value={fmt(totalRec)} color="#22c55e"/>
-                <StatPill label="Desp" value={fmt(totalDesp)} color="#f87171"/>
-                <StatPill label="Saldo" value={fmt(saldo)} color={saldo>=0?"#22c55e":"#f87171"}/>
-              </div>
-            </div>
+// ========== FORMATAÇÃO ==========
+function fmt(v) {
+  return 'R$ ' + Math.abs(Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
-            <div className="p-4 md:p-8">
-              {view==="dashboard" && <Dashboard monthTxs={monthTxs} monthRecs={monthRecs} totalDesp={totalDesp} totalRec={totalRec} saldo={saldo} />}
-              {view==="lancamentos" && <Lancamentos txs={monthTxs} inpClass={inpClass} />}
-              {view==="receitas" && <Receitas recs={monthRecs} inpClass={inpClass} />}
-              {view==="categorias" && <Categorias txs={monthTxs} totalDesp={totalDesp}/>}
-              {view==="anual" && <Anual lancamentos={lancamentos} />}
-            </div>
-          </div>
+function fmtData(d) {
+  if (!d) return '';
+  const p = d.split('-');
+  return `${p[2]}/${p[1]}`;
+}
 
-          {/* ── BOTTOM NAV (MOBILE) ── */}
-          <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#0d0d18] border-t border-white/5 flex justify-around items-center p-2 z-50 pb-safe">
-            {NAV_ITEMS.map(n => (
-              <div key={n.id} onClick={() => setView(n.id)} className={`flex flex-col items-center p-2 rounded-xl transition-colors ${view===n.id ? 'text-indigo-400' : 'text-white/40'}`}>
-                <span className="font-mono text-xl mb-1">{n.icon}</span>
-                <span className="text-[10px] font-semibold">{n.label.split(' ')[0]}</span>
-              </div>
-            ))}
-          </div>
+function getMesLancamentos(mes) {
+  const m = String(mes + 1).padStart(2, '0');
+  return lancamentos.filter(l => l.data_vencimento && l.data_vencimento.startsWith(`${anoAtual}-${m}`));
+}
 
-          {scanOpen && <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"><div className="bg-[#0f0f1a] border border-white/10 rounded-2xl p-8 text-center text-white max-w-sm w-full"><div className="text-5xl mb-4">📱</div><h2 className="text-xl font-bold mb-2">Mande a foto pelo Chat!</h2><p className="text-white/60 mb-6 text-sm">Como combinamos, envie a foto do comprovante para mim (IA) no chat, e eu injeto direto no Supabase para aparecer aqui automaticamente.</p><button onClick={() => setScanOpen(false)} className="bg-white/10 border border-white/10 rounded-xl text-white px-6 py-2 w-full font-semibold">Fechar</button></div></div>}
-        </div>
-      );
+// ========== DASHBOARD ==========
+function carregarDados() {
+  const dados = getMesLancamentos(mesAtual);
+  const despesas = dados.filter(l => l.tipo === 'despesa');
+  const receitas = dados.filter(l => l.tipo === 'receita');
+  const fixas = despesas.filter(l => l.recorrente === true);
+
+  const totalDesp = despesas.reduce((s, l) => s + Number(l.valor), 0);
+  const totalRec = receitas.reduce((s, l) => s + Number(l.valor), 0);
+  const totalFixas = fixas.reduce((s, l) => s + Number(l.valor), 0);
+  const saldo = totalRec - totalDesp;
+
+  document.getElementById('kpiRec').textContent = fmt(totalRec);
+  document.getElementById('kpiDesp').textContent = fmt(totalDesp);
+  document.getElementById('kpiFixas').textContent = fmt(totalFixas);
+
+  const kpiSaldo = document.getElementById('kpiSaldo');
+  kpiSaldo.textContent = (saldo >= 0 ? '+' : '-') + ' ' + fmt(saldo);
+  kpiSaldo.className = 'kpi-value ' + (saldo >= 0 ? 'pos' : 'neg');
+
+  renderChartCat(despesas);
+  renderChartDia(despesas);
+  renderUltimos(dados);
+  renderLancamentos();
+  renderCategorias(despesas, totalDesp);
+}
+
+// ========== CHART: CATEGORIAS ==========
+function renderChartCat(despesas) {
+  const agrup = {};
+  despesas.forEach(l => {
+    const cat = l.categorias_financeiras ? l.categorias_financeiras.nome : 'Outros';
+    const cor = l.categorias_financeiras ? l.categorias_financeiras.cor_hex : '#64748b';
+    if (!agrup[cat]) agrup[cat] = { total: 0, cor };
+    agrup[cat].total += Number(l.valor);
+  });
+
+  const labels = Object.keys(agrup);
+  const values = labels.map(k => agrup[k].total);
+  const colors = labels.map(k => agrup[k].cor);
+
+  if (chartCat) chartCat.destroy();
+  chartCat = new Chart(document.getElementById('chartCat'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '65%',
+      plugins: {
+        legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12, padding: 8 } }
+      }
     }
+  });
+}
 
-    /* ─── COMPONENTES SECUNDÁRIOS ────────────────────────────── */
-    function StatPill({ label, value, color }) {
-      return (
-        <div className="bg-white/5 border border-white/10 rounded-xl p-2 md:px-4 md:py-2 text-center flex-1 md:flex-none min-w-[90px]">
-          <div className="text-[9px] md:text-[10px] text-white/40 uppercase tracking-widest font-['JetBrains_Mono']">{label}</div>
-          <div className="text-xs md:text-sm font-bold mt-1" style={{color}}>{value}</div>
+// ========== CHART: EVOLUÇÃO DIÁRIA ==========
+function renderChartDia(despesas) {
+  const porDia = {};
+  despesas.forEach(l => {
+    const dia = l.data_vencimento ? l.data_vencimento.split('-')[2] : '01';
+    porDia[dia] = (porDia[dia] || 0) + Number(l.valor);
+  });
+  const dias = Object.keys(porDia).sort();
+  const vals = dias.map(d => porDia[d]);
+
+  if (chartDia) chartDia.destroy();
+  chartDia = new Chart(document.getElementById('chartDia'), {
+    type: 'bar',
+    data: {
+      labels: dias.map(d => d + '/' + String(mesAtual + 1).padStart(2, '0')),
+      datasets: [{
+        data: vals, backgroundColor: 'rgba(248,113,113,.6)',
+        borderRadius: 6, borderSkipped: false
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#64748b', font: { size: 10 }, callback: v => 'R$' + v }, grid: { color: 'rgba(100,116,139,.15)' } }
+      }
+    }
+  });
+}
+
+// ========== ÚLTIMOS LANÇAMENTOS ==========
+function renderUltimos(dados) {
+  const ultimos = dados.slice(0, 8);
+  const el = document.getElementById('ultimosTx');
+
+  if (ultimos.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Nenhum lançamento neste mês</p></div>';
+    return;
+  }
+
+  el.innerHTML = ultimos.map(l => {
+    const cat = l.categorias_financeiras ? l.categorias_financeiras.nome : 'Outros';
+    const icon = ICON_CAT[cat] || '💳';
+    const isDesp = l.tipo === 'despesa';
+    const badge = l.recorrente ? '<span class="tx-badge fixa">📌 FIXA</span>' : '';
+    return `<div class="tx-item">
+      <div class="tx-icon" style="background:${isDesp ? 'rgba(248,113,113,.15)' : 'rgba(74,222,128,.15)'}">${icon}</div>
+      <div class="tx-info">
+        <div class="tx-name">${l.descricao}${badge}</div>
+        <div class="tx-meta">${fmtData(l.data_vencimento)} · ${cat} · ${l.forma_pagamento || ''}</div>
+      </div>
+      <div class="tx-valor ${isDesp ? 'desp' : 'rec'}">${isDesp ? '-' : '+'}${fmt(l.valor)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ========== LANÇAMENTOS (LISTA COMPLETA) ==========
+function renderLancamentos() {
+  const dados = getMesLancamentos(mesAtual);
+  const search = (document.getElementById('searchLanc')?.value || '').toLowerCase();
+
+  // Filtros
+  const catsUsadas = [...new Set(dados.map(l => l.categorias_financeiras ? l.categorias_financeiras.nome : 'Outros'))].sort();
+  const filterBar = document.getElementById('filterBar');
+  filterBar.innerHTML = `<button class="filter-btn ${filtroCategoria === 'todas' ? 'active' : ''}" onclick="setFiltro('todas')">Todas</button>` +
+    catsUsadas.map(c => `<button class="filter-btn ${filtroCategoria === c ? 'active' : ''}" onclick="setFiltro('${c}')">${c}</button>`).join('');
+
+  let filtrados = dados;
+  if (filtroCategoria !== 'todas') {
+    filtrados = filtrados.filter(l => (l.categorias_financeiras ? l.categorias_financeiras.nome : 'Outros') === filtroCategoria);
+  }
+  if (search) {
+    filtrados = filtrados.filter(l => l.descricao.toLowerCase().includes(search) || (l.favorecido_pagador || '').toLowerCase().includes(search));
+  }
+
+  const el = document.getElementById('listLanc');
+  if (filtrados.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><p>Nenhum lançamento encontrado</p></div>';
+    return;
+  }
+
+  el.innerHTML = filtrados.map(l => {
+    const cat = l.categorias_financeiras ? l.categorias_financeiras.nome : 'Outros';
+    const icon = ICON_CAT[cat] || '💳';
+    const isDesp = l.tipo === 'despesa';
+    const badge = l.recorrente ? '<span class="tx-badge fixa">📌</span>' : '';
+    return `<div class="tx-item">
+      <div class="tx-icon" style="background:${isDesp ? 'rgba(248,113,113,.15)' : 'rgba(74,222,128,.15)'}">${icon}</div>
+      <div class="tx-info">
+        <div class="tx-name">${l.descricao}${badge}</div>
+        <div class="tx-meta">${fmtData(l.data_vencimento)} · ${cat} · ${l.forma_pagamento || ''} · ${l.status || ''}</div>
+      </div>
+      <div class="tx-valor ${isDesp ? 'desp' : 'rec'}">${isDesp ? '-' : '+'}${fmt(l.valor)}</div>
+    </div>`;
+  }).join('');
+}
+
+function setFiltro(cat) {
+  filtroCategoria = cat;
+  renderLancamentos();
+}
+
+// ========== FIXAS ==========
+function carregarFixas() {
+  // Pegar todas as despesas fixas (recorrente = true) únicas por descrição
+  const fixas = lancamentos.filter(l => l.recorrente === true && l.tipo === 'despesa');
+
+  // Agrupar por descrição para evitar duplicatas (pega o mais recente)
+  const agrup = {};
+  fixas.forEach(l => {
+    const key = l.descricao;
+    if (!agrup[key] || l.data_vencimento > agrup[key].data_vencimento) {
+      agrup[key] = l;
+    }
+  });
+
+  const lista = Object.values(agrup).sort((a, b) => Number(b.valor) - Number(a.valor));
+  const total = lista.reduce((s, l) => s + Number(l.valor), 0);
+
+  document.getElementById('kpiFixasTotal').textContent = fmt(total);
+
+  const el = document.getElementById('listFixas');
+  if (lista.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">📌</div><p>Nenhuma despesa fixa cadastrada</p></div>';
+    return;
+  }
+
+  el.innerHTML = lista.map(l => {
+    const cat = l.categorias_financeiras ? l.categorias_financeiras.nome : 'Outros';
+    const pago = (l.status || '').toLowerCase() === 'pago';
+    return `<div class="fixa-item">
+      <div class="fixa-left">
+        <div class="fixa-status ${pago ? 'pago' : 'pendente'}"></div>
+        <div>
+          <div class="fixa-name">${l.descricao}</div>
+          <div class="fixa-cat">${cat} · ${pago ? '✅ Pago' : '⏳ Pendente'}</div>
         </div>
-      );
-    }
+      </div>
+      <div class="fixa-valor">${fmt(l.valor)}</div>
+    </div>`;
+  }).join('');
+}
 
-    function Dashboard({ monthTxs, monthRecs, totalDesp, totalRec, saldo }) {
-      const catTotals = ALL_CATS.map(c => ({ name:c, valor: monthTxs.filter(t=>t.categoria===c).reduce((s,t)=>s+Number(t.valor||0),0) })).filter(c=>c.valor>0).sort((a,b)=>b.valor-a.valor);
-      const tipoPieData = TIPOS.map(tp => ({ name:tp, valor: monthTxs.filter(t=>t.tipo===tp).reduce((s,t)=>s+Number(t.valor||0),0) })).filter(t=>t.valor>0);
-      const TIPO_COLORS = ["#6366f1","#a855f7","#ec4899","#f59e0b","#22c55e"];
-      const CanRenderCharts = typeof BarChart !== 'undefined';
+// ========== CATEGORIAS ==========
+function renderCategorias(despesas, totalDesp) {
+  const agrup = {};
+  despesas.forEach(l => {
+    const cat = l.categorias_financeiras ? l.categorias_financeiras.nome : 'Outros';
+    const cor = l.categorias_financeiras ? l.categorias_financeiras.cor_hex : '#64748b';
+    if (!agrup[cat]) agrup[cat] = { total: 0, cor, qtd: 0 };
+    agrup[cat].total += Number(l.valor);
+    agrup[cat].qtd++;
+  });
 
-      return (
-        <div className="flex flex-col gap-4 md:gap-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-            {[
-              { label:"Despesas", value:fmt(totalDesp), sub:`${monthTxs.length} lanç.`, color:"#f87171", icon:"💸" },
-              { label:"Receitas", value:fmt(totalRec), sub:`${monthRecs.length} ent.`, color:"#22c55e", icon:"💵" },
-              { label:"Saldo", value:fmt(saldo), sub: saldo>=0?"Positivo 🎉":"Atenção ⚠️", color:saldo>=0?"#22c55e":"#f87171", icon:"⚖️" },
-              { label:"Maior Gasto", value: catTotals[0] ? fmt(catTotals[0].valor) : "R$ 0", sub:catTotals[0]?.name?.substring(0,12)||"—", color:"#a855f7", icon:"📊" },
-            ].map(k => (
-              <div key={k.label} className="bg-white/5 border border-white/10 rounded-2xl p-4 transition-transform hover:-translate-y-1">
-                <div className="text-xl md:text-2xl mb-2">{k.icon}</div>
-                <div className="text-[9px] md:text-[11px] text-white/40 uppercase tracking-widest font-['JetBrains_Mono'] mb-1">{k.label}</div>
-                <div className="text-sm md:text-lg font-extrabold" style={{color:k.color}}>{k.value}</div>
-                <div className="text-[10px] text-white/40 mt-1 truncate">{k.sub}</div>
-              </div>
-            ))}
-          </div>
+  const sorted = Object.entries(agrup).sort((a, b) => b[1].total - a[1].total);
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-            <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6">
-              <div className="text-sm font-bold text-white/60 mb-4">Gastos por Categoria</div>
-              {catTotals.length > 0 && CanRenderCharts ? (
-                <div className="h-52 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={catTotals.slice(0,8)} layout="vertical" margin={{left:0,right:20}}>
-                      <XAxis type="number" hide/>
-                      <YAxis type="category" dataKey="name" width={110} tick={{ fill:"rgba(255,255,255,0.5)", fontSize:10 }}/>
-                      <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8 }} labelStyle={{ color:"#fff" }}/>
-                      <Bar dataKey="valor" radius={[0,6,6,0]}>
-                        {catTotals.slice(0,8).map((e,i) => <Cell key={i} fill={CAT_COLORS[e.name]||"#6366f1"}/>)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : <Empty text="Sem lançamentos"/>}
-            </div>
+  const el = document.getElementById('listCat');
+  if (sorted.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">🏷️</div><p>Sem categorias neste mês</p></div>';
+    return;
+  }
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6">
-              <div className="text-sm font-bold text-white/60 mb-4">Por Pagamento</div>
-              {tipoPieData.length > 0 && CanRenderCharts ? (<>
-                <div className="h-36 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={tipoPieData} dataKey="valor" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={60}>
-                        {tipoPieData.map((e,i) => <Cell key={i} fill={TIPO_COLORS[i%TIPO_COLORS.length]}/>)}
-                      </Pie>
-                      <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8 }}/>
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex flex-wrap gap-2 mt-4 justify-center">
-                  {tipoPieData.map((t,i) => (
-                    <div key={t.name} className="flex items-center gap-1.5 text-[10px] text-white/50 bg-white/5 px-2 py-1 rounded-md">
-                      <div className="w-2 h-2 rounded-full" style={{background:TIPO_COLORS[i%TIPO_COLORS.length]}}/>{t.name}
-                    </div>
-                  ))}
-                </div>
-              </>) : <Empty text="Sem dados"/>}
-            </div>
-          </div>
+  const maxVal = sorted[0][1].total;
+  el.innerHTML = '<div class="section-title"><span>🏷️</span> Ranking por Categoria</div>' +
+    sorted.map(([nome, d]) => {
+      const pct = totalDesp > 0 ? ((d.total / totalDesp) * 100).toFixed(1) : 0;
+      const barW = maxVal > 0 ? ((d.total / maxVal) * 100) : 0;
+      const icon = ICON_CAT[nome] || '💳';
+      return `<div class="cat-item">
+        <div class="cat-header">
+          <div class="cat-name"><div class="cat-dot" style="background:${d.cor}"></div>${icon} ${nome} (${d.qtd})</div>
+          <div class="cat-valor" style="color:${d.cor}">${fmt(d.total)}</div>
         </div>
-      );
+        <div class="cat-bar"><div class="cat-bar-fill" style="width:${barW}%;background:${d.cor}"></div></div>
+        <div class="cat-pct">${pct}% do total</div>
+      </div>`;
+    }).join('');
+}
+
+// ========== ANUAL ==========
+function carregarAnual() {
+  const meses = [];
+  for (let m = 0; m < 12; m++) {
+    const dados = getMesLancamentos(m);
+    const desp = dados.filter(l => l.tipo === 'despesa').reduce((s, l) => s + Number(l.valor), 0);
+    const rec = dados.filter(l => l.tipo === 'receita').reduce((s, l) => s + Number(l.valor), 0);
+    meses.push({ nome: MESES[m].substring(0, 3), desp, rec, saldo: rec - desp });
+  }
+
+  // Grid
+  document.getElementById('gridAnual').innerHTML = meses.map((m, i) => {
+    const saldoCor = m.saldo >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+    const active = i === mesAtual ? 'active' : '';
+    return `<div class="month-card ${active}" onclick="syncMes(${i});navTo('pageDash',document.querySelector('.nav-item'))">
+      <div class="month-label">${m.nome}</div>
+      <div class="month-desp">-${fmt(m.desp)}</div>
+      <div class="month-rec">+${fmt(m.rec)}</div>
+      <div class="month-saldo" style="${saldoCor}">${m.saldo >= 0 ? '+' : ''}${fmt(m.saldo)}</div>
+    </div>`;
+  }).join('');
+
+  // Chart
+  const labels = meses.map(m => m.nome);
+  const despData = meses.map(m => m.desp);
+  const recData = meses.map(m => m.rec);
+
+  if (chartAnual) chartAnual.destroy();
+  chartAnual = new Chart(document.getElementById('chartAnual'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Receitas', data: recData, backgroundColor: 'rgba(74,222,128,.7)', borderRadius: 6 },
+        { label: 'Despesas', data: despData, backgroundColor: 'rgba(248,113,113,.7)', borderRadius: 6 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#64748b', font: { size: 10 }, callback: v => 'R$' + v }, grid: { color: 'rgba(100,116,139,.15)' } }
+      }
     }
+  });
+}
 
-    function Lancamentos({ txs, inpClass }) {
-      return (
-        <div className="flex flex-col gap-4">
-          <div className="overflow-x-auto pb-4">
-            <div className="min-w-[650px] md:min-w-0">
-              <div className="grid grid-cols-[2fr_50px_50px_90px_1fr_90px] gap-2 p-2 px-3 text-[10px] text-white/30 uppercase tracking-widest font-['JetBrains_Mono'] border-b border-white/5 mb-2">
-                <span>Nome</span><span className="text-center">Pago</span><span className="text-center">Dia</span><span>Tipo</span><span>Categoria</span><span className="text-right">Valor</span>
-              </div>
-              {txs.length===0 ? <Empty text="Nenhum lançamento no mês"/> : txs.sort((a,b)=>Number(b.data)-Number(a.data)).map(t => (
-                <div key={t.id} className="grid grid-cols-[2fr_50px_50px_90px_1fr_90px] gap-2 p-3 bg-white/5 border border-white/5 rounded-xl items-center mb-2 hover:bg-white/10 transition-colors">
-                  <div className="text-xs md:text-sm font-semibold truncate">{t.nome}</div>
-                  <div className="text-center text-xs">{t.pago?"✅":"⏳"}</div>
-                  <div className="text-xs text-white/50 text-center font-['JetBrains_Mono']">{t.data}</div>
-                  <div className="text-[10px] md:text-xs bg-white/10 rounded-md px-2 py-1 text-center truncate">{t.tipo}</div>
-                  <div className="flex items-center gap-2 truncate">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{background:CAT_COLORS[t.categoria]||"#64748b"}}/>
-                    <span className="text-[10px] md:text-xs truncate">{t.categoria}</span>
-                  </div>
-                  <div className="text-xs md:text-sm font-bold text-red-400 text-right font-['JetBrains_Mono']">{fmt(t.valor)}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      );
-    }
+// ========== NAVEGAÇÃO ==========
+function navTo(pageId, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(pageId).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
 
-    function Receitas({ recs, inpClass }) {
-      return (
-        <div className="flex flex-col gap-4">
-          {recs.length===0 ? <Empty text="Nenhuma receita no mês"/> : recs.sort((a,b)=>Number(b.data)-Number(a.data)).map(r => (
-            <div key={r.id} className="flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-white/5 border border-white/5 rounded-xl">
-              <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-lg shrink-0">💵</div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm md:text-base font-bold truncate">{r.nome}</div>
-                <div className="text-xs text-white/40">Dia {r.data}</div>
-              </div>
-              <div className="text-base md:text-lg font-extrabold text-green-400 font-['JetBrains_Mono']">{fmt(r.valor)}</div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    function Categorias({ txs, totalDesp }) {
-      const catData = ALL_CATS.map(c => {
-        const catTxs = txs.filter(t=>t.categoria===c);
-        const valor = catTxs.reduce((s,t)=>s+Number(t.valor||0),0);
-        return { cat:c, valor, count:catTxs.length, pct: totalDesp>0 ? (valor/totalDesp*100).toFixed(1) : 0 };
-      }).filter(c=>c.valor>0).sort((a,b)=>b.valor-a.valor);
-
-      return (
-        <div className="flex flex-col gap-3 md:gap-4">
-          {catData.length === 0 ? <Empty text="Aguardando lançamentos..."/> : catData.map(c => (
-            <div key={c.cat} className="bg-white/5 border border-white/5 rounded-xl p-4 md:p-5">
-              <div className="flex justify-between mb-3 items-center">
-                <div className="flex items-center gap-2 md:gap-3">
-                  <div className="w-3 h-3 rounded-sm shrink-0" style={{background:CAT_COLORS[c.cat]||"#64748b"}}/>
-                  <div className="text-sm md:text-base font-bold truncate max-w-[150px] md:max-w-none">{c.cat}</div>
-                </div>
-                <div className="flex items-center gap-3 md:gap-4">
-                  <span className="text-[10px] md:text-xs text-white/40">{c.pct}%</span>
-                  <span className="text-sm md:text-lg font-bold text-red-400 font-['JetBrains_Mono']">{fmt(c.valor)}</span>
-                </div>
-              </div>
-              <div className="bg-white/10 rounded-full h-1.5 md:h-2 w-full overflow-hidden">
-                <div className="h-full rounded-full transition-all duration-500" style={{width:`${c.pct}%`, background:CAT_COLORS[c.cat]||"#6366f1"}}/>
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    function Anual({ lancamentos }) {
-      const CanRenderCharts = typeof window.Recharts !== 'undefined' && window.Recharts.BarChart;
-      const monthSums = MONTHS.map((m,i) => {
-        const desp = lancamentos.filter(l => l.data_vencimento && l.tipo==='Despesa' && new Date(l.data_vencimento+'T00:00:00').getMonth() === i).reduce((s,t)=>s+Number(t.valor),0);
-        const rec = lancamentos.filter(l => l.data_vencimento && l.tipo==='Receita' && new Date(l.data_vencimento+'T00:00:00').getMonth() === i).reduce((s,t)=>s+Number(t.valor),0);
-        return { mes: MONTH_SHORT[i], desp, rec, saldo: rec-desp };
-      });
-
-      return (
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6 overflow-x-auto">
-          <div className="text-sm font-bold text-white/60 mb-6">Resumo Anual ({CURRENT_YEAR})</div>
-          <div className="min-w-[500px]">
-            {CanRenderCharts ? (
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthSums}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
-                    <XAxis dataKey="mes" tick={{ fill:"rgba(255,255,255,0.4)", fontSize:10 }}/>
-                    <YAxis tick={{ fill:"rgba(255,255,255,0.4)", fontSize:10 }}/>
-                    <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", borderRadius:8, border:"none" }}/>
-                    <Bar dataKey="rec" name="Receitas" fill="#22c55e" radius={[4,4,0,0]}/>
-                    <Bar dataKey="desp" name="Despesas" fill="#f87171" radius={[4,4,0,0]}/>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : <Empty text="Carregando gráficos..."/>}
-          </div>
-        </div>
-      );
-    }
-
-    function Empty({ text }) {
-      return <div className="text-center p-8 text-white/20"><div className="text-4xl mb-2">📭</div><div className="text-xs md:text-sm">{text}</div></div>;
-    }
-
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
+// ========== START ==========
+init();
+</script>
 </body>
 </html>
