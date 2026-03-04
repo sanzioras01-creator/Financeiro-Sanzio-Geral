@@ -6,17 +6,11 @@
     <title>Painel Financeiro Inteligente</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
     <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
-
-    <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
         body { background-color: #f3f4f6; font-family: 'Inter', sans-serif; }
@@ -28,9 +22,11 @@
 
     <script type="text/babel">
         const { useState, useEffect } = React;
-        const { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } = window.Recharts;
+        
+        // Tratamento de segurança para a biblioteca de gráficos
+        const Recharts = window.Recharts || {};
+        const { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } = Recharts;
 
-        // Configuração Direta do seu Supabase
         const SUPABASE_URL = 'https://wqajkohquvoukljpkqet.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxYWprb2hxdXZvdWtsanBrcWV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NzIzNjIsImV4cCI6MjA4ODE0ODM2Mn0.-GsT75uLNZJJuFErpYjvOZ0lNJWlrg2qHpNUhGqUgus';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -38,34 +34,54 @@
         function App() {
             const [lancamentos, setLancamentos] = useState([]);
             const [loading, setLoading] = useState(true);
+            const [erro, setErro] = useState(null);
             const [abaAtiva, setAbaAtiva] = useState('dashboard');
 
-            // Busca os dados no Supabase
             useEffect(() => {
                 async function fetchData() {
-                    const { data, error } = await supabase
-                        .from('lancamentos')
-                        .select('*, categorias_financeiras(nome, cor_hex), contas_bancarias(nome)')
-                        .order('data_vencimento', { ascending: false });
-                    
-                    if (data) setLancamentos(data);
-                    setLoading(false);
+                    try {
+                        const { data, error } = await supabase
+                            .from('lancamentos')
+                            .select('*, categorias_financeiras(nome, cor_hex), contas_bancarias(nome)')
+                            .order('data_vencimento', { ascending: false });
+                        
+                        if (error) throw error;
+                        if (data) setLancamentos(data);
+                    } catch (err) {
+                        console.error("Erro ao buscar dados:", err);
+                        setErro(err.message || "Erro desconhecido ao conectar no banco.");
+                    } finally {
+                        setLoading(false);
+                    }
                 }
                 fetchData();
             }, []);
 
-            // Cálculos dos KPIs
-            const totalReceitas = lancamentos.filter(l => l.tipo === 'Receita' && l.status === 'Pago').reduce((acc, curr) => acc + curr.valor, 0);
-            const totalDespesas = lancamentos.filter(l => l.tipo === 'Despesa' && l.status === 'Pago').reduce((acc, curr) => acc + curr.valor, 0);
-            const aPagar = lancamentos.filter(l => l.tipo === 'Despesa' && l.status === 'Pendente').reduce((acc, curr) => acc + curr.valor, 0);
+            // Se der erro, mostra na tela em vez de ficar branca
+            if (erro) return (
+                <div className="flex flex-col h-screen items-center justify-center p-4 bg-gray-100">
+                    <div className="bg-white p-8 rounded-lg shadow-md max-w-lg w-full">
+                        <h1 className="text-2xl font-bold text-red-600 mb-4">Ops! Encontramos um erro:</h1>
+                        <p className="text-gray-800 bg-red-50 p-4 rounded border border-red-200 font-mono text-sm">{erro}</p>
+                    </div>
+                </div>
+            );
+
+            if (loading) return <div className="flex h-screen items-center justify-center text-xl font-semibold text-gray-500">Conectando ao Supabase...</div>;
+
+            // Função que força o valor a ser Número, não texto
+            const getValor = (val) => Number(val) || 0;
+
+            const totalReceitas = lancamentos.filter(l => l.tipo === 'Receita' && l.status === 'Pago').reduce((acc, curr) => acc + getValor(curr.valor), 0);
+            const totalDespesas = lancamentos.filter(l => l.tipo === 'Despesa' && l.status === 'Pago').reduce((acc, curr) => acc + getValor(curr.valor), 0);
+            const aPagar = lancamentos.filter(l => l.tipo === 'Despesa' && l.status === 'Pendente').reduce((acc, curr) => acc + getValor(curr.valor), 0);
             const saldoAtual = totalReceitas - totalDespesas;
 
-            // Dados para o Gráfico
             const despesasPorCategoria = lancamentos
                 .filter(l => l.tipo === 'Despesa' && l.status === 'Pago' && l.categorias_financeiras)
                 .reduce((acc, curr) => {
                     const cat = curr.categorias_financeiras.nome;
-                    acc[cat] = (acc[cat] || 0) + curr.valor;
+                    acc[cat] = (acc[cat] || 0) + getValor(curr.valor);
                     return acc;
                 }, {});
             
@@ -75,36 +91,28 @@
 
             const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
-            if (loading) return <div className="flex h-screen items-center justify-center text-xl font-semibold text-gray-500">Conectando ao Supabase...</div>;
-
             return (
                 <div className="flex h-screen overflow-hidden">
-                    {/* Menu Lateral */}
                     <aside className="w-64 bg-gray-900 text-white flex flex-col">
                         <div className="p-6 text-2xl font-bold tracking-wider text-blue-400">Financeiro App</div>
                         <nav className="flex-1 px-4 space-y-2">
-                            <button onClick={() => setAbaAtiva('dashboard')} className={`w-full text-left p-3 rounded-lg font-medium ${abaAtiva === 'dashboard' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>📊 Dashboard</button>
-                            <button onClick={() => setAbaAtiva('lancamentos')} className={`w-full text-left p-3 rounded-lg font-medium ${abaAtiva === 'lancamentos' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>💸 Lançamentos</button>
-                            <button onClick={() => setAbaAtiva('previsoes')} className={`w-full text-left p-3 rounded-lg font-medium ${abaAtiva === 'previsoes' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>🎯 Previsto x Realizado</button>
+                            <button onClick={() => setAbaAtiva('dashboard')} className={`w-full text-left p-3 rounded-lg font-medium transition ${abaAtiva === 'dashboard' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>📊 Dashboard</button>
+                            <button onClick={() => setAbaAtiva('lancamentos')} className={`w-full text-left p-3 rounded-lg font-medium transition ${abaAtiva === 'lancamentos' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>💸 Lançamentos</button>
+                            <button onClick={() => setAbaAtiva('previsoes')} className={`w-full text-left p-3 rounded-lg font-medium transition ${abaAtiva === 'previsoes' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>🎯 Previsto x Realizado</button>
                         </nav>
-                        <div className="p-4 text-xs text-gray-500 text-center">Conectado via API Rest</div>
                     </aside>
 
-                    {/* Área Principal */}
                     <main className="flex-1 overflow-y-auto p-8">
-                        
                         {abaAtiva === 'dashboard' && (
                             <div>
                                 <h1 className="text-3xl font-bold text-gray-800 mb-8">Visão Geral</h1>
-                                
-                                {/* Cards de KPI */}
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                                     <div className="glass-card border-l-4 border-blue-500">
                                         <p className="text-gray-500 text-sm font-semibold uppercase">Saldo Realizado</p>
                                         <p className="text-3xl font-bold text-gray-800 mt-2">R$ {saldoAtual.toFixed(2)}</p>
                                     </div>
                                     <div className="glass-card border-l-4 border-green-500">
-                                        <p className="text-gray-500 text-sm font-semibold uppercase">Receitas</p>
+                                        <p className="text-gray-500 text-sm font-semibold uppercase">Receitas Pagas</p>
                                         <p className="text-3xl font-bold text-green-600 mt-2">R$ {totalReceitas.toFixed(2)}</p>
                                     </div>
                                     <div className="glass-card border-l-4 border-red-500">
@@ -117,12 +125,11 @@
                                     </div>
                                 </div>
 
-                                {/* Gráficos */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="glass-card">
-                                        <h2 className="text-lg font-bold text-gray-700 mb-4">Despesas por Categoria</h2>
-                                        {pieData.length > 0 ? (
-                                            <div className="h-64">
+                                    <div className="glass-card flex flex-col items-center">
+                                        <h2 className="text-lg font-bold text-gray-700 w-full mb-4">Despesas por Categoria</h2>
+                                        {pieData.length > 0 && PieChart ? (
+                                            <div className="h-64 w-full">
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     <PieChart>
                                                         <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
@@ -135,7 +142,9 @@
                                                 </ResponsiveContainer>
                                             </div>
                                         ) : (
-                                            <p className="text-gray-400 text-center mt-20">Nenhum dado para exibir.</p>
+                                            <div className="flex items-center justify-center h-48 w-full bg-gray-50 rounded border border-dashed">
+                                                <p className="text-gray-400 text-sm">Nenhum dado com status 'Pago' para exibir.</p>
+                                            </div>
                                         )}
                                     </div>
 
@@ -149,11 +158,11 @@
                                                         <p className="text-xs text-gray-500">{new Date(l.data_vencimento).toLocaleDateString('pt-BR')} • {l.status}</p>
                                                     </div>
                                                     <p className={`font-bold ${l.tipo === 'Receita' ? 'text-green-600' : 'text-red-600'}`}>
-                                                        {l.tipo === 'Receita' ? '+' : '-'} R$ {l.valor.toFixed(2)}
+                                                        {l.tipo === 'Receita' ? '+' : '-'} R$ {getValor(l.valor).toFixed(2)}
                                                     </p>
                                                 </div>
                                             ))}
-                                            {lancamentos.length === 0 && <p className="text-gray-400 text-sm">Nenhum lançamento encontrado.</p>}
+                                            {lancamentos.length === 0 && <p className="text-gray-400 text-sm text-center py-6">Banco zerado! Pronto para receber lançamentos.</p>}
                                         </div>
                                     </div>
                                 </div>
@@ -172,7 +181,7 @@
                                                 <th className="pb-3">Categoria</th>
                                                 <th className="pb-3">Tags</th>
                                                 <th className="pb-3">Status</th>
-                                                <th className="pb-3">Valor</th>
+                                                <th className="pb-3 text-right">Valor</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -191,11 +200,14 @@
                                                             {l.status}
                                                         </span>
                                                     </td>
-                                                    <td className={`py-3 font-bold ${l.tipo === 'Receita' ? 'text-green-600' : 'text-red-600'}`}>
-                                                        R$ {l.valor.toFixed(2)}
+                                                    <td className={`py-3 font-bold text-right ${l.tipo === 'Receita' ? 'text-green-600' : 'text-red-600'}`}>
+                                                        R$ {getValor(l.valor).toFixed(2)}
                                                     </td>
                                                 </tr>
                                             ))}
+                                            {lancamentos.length === 0 && (
+                                                <tr><td colSpan="6" className="text-center py-8 text-gray-500">Nenhum lançamento encontrado.</td></tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
@@ -206,11 +218,10 @@
                             <div>
                                 <h1 className="text-3xl font-bold text-gray-800 mb-6">Previsto x Realizado</h1>
                                 <div className="glass-card">
-                                    <p className="text-gray-600 text-center py-10">O módulo de previsões cruzará a tabela <strong>orcamentos_previstos</strong> com seus gastos em tempo real assim que os primeiros orçamentos forem definidos pela inteligência artificial.</p>
+                                    <p className="text-gray-600 text-center py-10">O módulo de previsões cruzará a tabela <strong>orcamentos_previstos</strong> com seus gastos em tempo real assim que começarmos os lançamentos automatizados.</p>
                                 </div>
                             </div>
                         )}
-
                     </main>
                 </div>
             );
