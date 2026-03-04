@@ -1,234 +1,572 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Financeiro Inteligente</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
-
-    <style>
-        body { background-color: #f3f4f6; font-family: 'Inter', sans-serif; }
-        .glass-card { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); padding: 20px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financeiro Pro</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
 </head>
 <body>
-    <div id="root"></div>
+  <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
-        
-        // Tratamento de segurança para a biblioteca de gráficos
-        const Recharts = window.Recharts || {};
-        const { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } = Recharts;
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+    const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } = window.Recharts;
 
-        const SUPABASE_URL = 'https://wqajkohquvoukljpkqet.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxYWprb2hxdXZvdWtsanBrcWV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NzIzNjIsImV4cCI6MjA4ODE0ODM2Mn0.-GsT75uLNZJJuFErpYjvOZ0lNJWlrg2qHpNUhGqUgus';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    /* ─── CREDENCIAIS SUPABASE ──────────────────────────────── */
+    const SUPABASE_URL = 'https://wqajkohquvoukljpkqet.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxYWprb2hxdXZvdWtsanBrcWV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NzIzNjIsImV4cCI6MjA4ODE0ODM2Mn0.-GsT75uLNZJJuFErpYjvOZ0lNJWlrg2qHpNUhGqUgus';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        function App() {
-            const [lancamentos, setLancamentos] = useState([]);
-            const [loading, setLoading] = useState(true);
-            const [erro, setErro] = useState(null);
-            const [abaAtiva, setAbaAtiva] = useState('dashboard');
+    /* ─── CONSTANTES DA UI ──────────────────────────────────── */
+    const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    const MONTH_SHORT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-            useEffect(() => {
-                async function fetchData() {
-                    try {
-                        const { data, error } = await supabase
-                            .from('lancamentos')
-                            .select('*, categorias_financeiras(nome, cor_hex), contas_bancarias(nome)')
-                            .order('data_vencimento', { ascending: false });
-                        
-                        if (error) throw error;
-                        if (data) setLancamentos(data);
-                    } catch (err) {
-                        console.error("Erro ao buscar dados:", err);
-                        setErro(err.message || "Erro desconhecido ao conectar no banco.");
-                    } finally {
-                        setLoading(false);
-                    }
-                }
-                fetchData();
-            }, []);
+    const CATS_PESSOAL = ["Moradia","Financiamento","Mercado","Transporte/Gasolina","Vestuário","Assinaturas","Saúde e Beleza","Despesas eventuais","Autoaperfeiçoamento","Lazer","Outros"];
+    const CATS_EMPRESA = ["Folha de Pagamento","Fornecedores","Marketing/Publicidade","Impostos/Taxas (Empresa)","Aluguel Comercial","Despesas Empresariais"];
+    const ALL_CATS = [...CATS_PESSOAL, ...CATS_EMPRESA];
+    const TIPOS = ["Cartão 01","Cartão 02","Pix","Débito/Boleto","Dinheiro"];
 
-            // Se der erro, mostra na tela em vez de ficar branca
-            if (erro) return (
-                <div className="flex flex-col h-screen items-center justify-center p-4 bg-gray-100">
-                    <div className="bg-white p-8 rounded-lg shadow-md max-w-lg w-full">
-                        <h1 className="text-2xl font-bold text-red-600 mb-4">Ops! Encontramos um erro:</h1>
-                        <p className="text-gray-800 bg-red-50 p-4 rounded border border-red-200 font-mono text-sm">{erro}</p>
-                    </div>
-                </div>
-            );
+    const CAT_COLORS = {
+      "Moradia":"#6366f1","Financiamento":"#8b5cf6","Mercado":"#ec4899","Transporte/Gasolina":"#f59e0b",
+      "Vestuário":"#10b981","Assinaturas":"#3b82f6","Saúde e Beleza":"#f472b6","Despesas eventuais":"#ef4444",
+      "Autoaperfeiçoamento":"#14b8a6","Lazer":"#a855f7","Outros":"#64748b",
+      "Folha de Pagamento":"#22c55e","Fornecedores":"#16a34a","Marketing/Publicidade":"#15803d",
+      "Impostos/Taxas (Empresa)":"#166534","Aluguel Comercial":"#052e16","Despesas Empresariais":"#4ade80",
+    };
 
-            if (loading) return <div className="flex h-screen items-center justify-center text-xl font-semibold text-gray-500">Conectando ao Supabase...</div>;
+    const fmt = (v) => "R$ " + Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+    const now = new Date();
+    const CURRENT_YEAR = now.getFullYear();
+    const CURRENT_MONTH_IDX = now.getMonth();
 
-            // Função que força o valor a ser Número, não texto
-            const getValor = (val) => Number(val) || 0;
+    /* ─── APP PRINCIPAL ─────────────────────────────────────── */
+    function App() {
+      const [lancamentos, setLancamentos] = useState([]);
+      const [categorias, setCategorias] = useState([]);
+      const [contas, setContas] = useState([]);
+      
+      const [view, setView] = useState("dashboard");
+      const [monthIdx, setMonthIdx] = useState(CURRENT_MONTH_IDX);
+      const [filtroContaId, setFiltroContaId] = useState("Todas");
+      const [loading, setLoading] = useState(true);
+      const [scanOpen, setScanOpen] = useState(false);
 
-            const totalReceitas = lancamentos.filter(l => l.tipo === 'Receita' && l.status === 'Pago').reduce((acc, curr) => acc + getValor(curr.valor), 0);
-            const totalDespesas = lancamentos.filter(l => l.tipo === 'Despesa' && l.status === 'Pago').reduce((acc, curr) => acc + getValor(curr.valor), 0);
-            const aPagar = lancamentos.filter(l => l.tipo === 'Despesa' && l.status === 'Pendente').reduce((acc, curr) => acc + getValor(curr.valor), 0);
-            const saldoAtual = totalReceitas - totalDespesas;
+      // Carregamento Inicial e Setup Automático
+      useEffect(() => {
+        async function boot() {
+          // 1. Puxa Contas
+          let { data: dbContas } = await supabase.from('contas_bancarias').select('*');
+          if (!dbContas || dbContas.length === 0) {
+            const { data: newConta } = await supabase.from('contas_bancarias').insert([{ nome: 'Conta Principal', tipo: 'Pessoal' }]).select();
+            dbContas = newConta;
+          }
+          setContas(dbContas || []);
 
-            const despesasPorCategoria = lancamentos
-                .filter(l => l.tipo === 'Despesa' && l.status === 'Pago' && l.categorias_financeiras)
-                .reduce((acc, curr) => {
-                    const cat = curr.categorias_financeiras.nome;
-                    acc[cat] = (acc[cat] || 0) + getValor(curr.valor);
-                    return acc;
-                }, {});
-            
-            const pieData = Object.keys(despesasPorCategoria).map(key => ({
-                name: key, value: despesasPorCategoria[key]
+          // 2. Puxa Categorias e cria se não existirem
+          let { data: dbCats } = await supabase.from('categorias_financeiras').select('*');
+          if (!dbCats || dbCats.length === 0) {
+            const inserts = ALL_CATS.map(c => ({
+              nome: c, 
+              tipo: CATS_PESSOAL.includes(c) ? 'Pessoal' : 'Empresarial',
+              cor_hex: CAT_COLORS[c] || '#64748b'
             }));
+            await supabase.from('categorias_financeiras').insert(inserts);
+            const { data: freshCats } = await supabase.from('categorias_financeiras').select('*');
+            dbCats = freshCats;
+          }
+          setCategorias(dbCats || []);
 
-            const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+          // 3. Puxa Lançamentos
+          const { data: dbLancamentos } = await supabase.from('lancamentos').select('*, categorias_financeiras(nome), contas_bancarias(nome)');
+          setLancamentos(dbLancamentos || []);
+          
+          setLoading(false);
+        }
+        boot();
+      }, []);
 
-            return (
-                <div className="flex h-screen overflow-hidden">
-                    <aside className="w-64 bg-gray-900 text-white flex flex-col">
-                        <div className="p-6 text-2xl font-bold tracking-wider text-blue-400">Financeiro App</div>
-                        <nav className="flex-1 px-4 space-y-2">
-                            <button onClick={() => setAbaAtiva('dashboard')} className={`w-full text-left p-3 rounded-lg font-medium transition ${abaAtiva === 'dashboard' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>📊 Dashboard</button>
-                            <button onClick={() => setAbaAtiva('lancamentos')} className={`w-full text-left p-3 rounded-lg font-medium transition ${abaAtiva === 'lancamentos' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>💸 Lançamentos</button>
-                            <button onClick={() => setAbaAtiva('previsoes')} className={`w-full text-left p-3 rounded-lg font-medium transition ${abaAtiva === 'previsoes' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>🎯 Previsto x Realizado</button>
-                        </nav>
-                    </aside>
+      // Funções de Banco de Dados
+      const addTransactions = async (txs) => {
+        const defaultConta = contas[0]?.id;
+        const mappedTxs = txs.map(t => {
+          const cat = categorias.find(c => c.nome === t.categoria);
+          const dateStr = `${CURRENT_YEAR}-${String(monthIdx + 1).padStart(2, '0')}-${String(t.data || 1).padStart(2, '0')}`;
+          return {
+            descricao: t.nome || 'Sem descrição',
+            valor: Number(t.valor),
+            tipo: 'Despesa',
+            status: t.pago ? 'Pago' : 'Pendente',
+            forma_pagamento: t.tipo || 'Outro',
+            data_vencimento: dateStr,
+            data_pagamento: t.pago ? dateStr : null,
+            categoria_id: cat ? cat.id : null,
+            conta_id: defaultConta
+          };
+        });
 
-                    <main className="flex-1 overflow-y-auto p-8">
-                        {abaAtiva === 'dashboard' && (
-                            <div>
-                                <h1 className="text-3xl font-bold text-gray-800 mb-8">Visão Geral</h1>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                                    <div className="glass-card border-l-4 border-blue-500">
-                                        <p className="text-gray-500 text-sm font-semibold uppercase">Saldo Realizado</p>
-                                        <p className="text-3xl font-bold text-gray-800 mt-2">R$ {saldoAtual.toFixed(2)}</p>
-                                    </div>
-                                    <div className="glass-card border-l-4 border-green-500">
-                                        <p className="text-gray-500 text-sm font-semibold uppercase">Receitas Pagas</p>
-                                        <p className="text-3xl font-bold text-green-600 mt-2">R$ {totalReceitas.toFixed(2)}</p>
-                                    </div>
-                                    <div className="glass-card border-l-4 border-red-500">
-                                        <p className="text-gray-500 text-sm font-semibold uppercase">Despesas Pagas</p>
-                                        <p className="text-3xl font-bold text-red-600 mt-2">R$ {totalDespesas.toFixed(2)}</p>
-                                    </div>
-                                    <div className="glass-card border-l-4 border-orange-500">
-                                        <p className="text-gray-500 text-sm font-semibold uppercase">Contas a Pagar</p>
-                                        <p className="text-3xl font-bold text-orange-600 mt-2">R$ {aPagar.toFixed(2)}</p>
-                                    </div>
-                                </div>
+        const { data } = await supabase.from('lancamentos').insert(mappedTxs).select('*, categorias_financeiras(nome), contas_bancarias(nome)');
+        if (data) setLancamentos([...lancamentos, ...data]);
+      };
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="glass-card flex flex-col items-center">
-                                        <h2 className="text-lg font-bold text-gray-700 w-full mb-4">Despesas por Categoria</h2>
-                                        {pieData.length > 0 && PieChart ? (
-                                            <div className="h-64 w-full">
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <PieChart>
-                                                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                                            {pieData.map((entry, index) => (
-                                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                            ))}
-                                                        </Pie>
-                                                        <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
-                                                    </PieChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center justify-center h-48 w-full bg-gray-50 rounded border border-dashed">
-                                                <p className="text-gray-400 text-sm">Nenhum dado com status 'Pago' para exibir.</p>
-                                            </div>
-                                        )}
-                                    </div>
+      const addReceita = async (rec) => {
+        const defaultConta = contas[0]?.id;
+        const dateStr = `${CURRENT_YEAR}-${String(monthIdx + 1).padStart(2, '0')}-${String(rec.data || 1).padStart(2, '0')}`;
+        
+        const payload = {
+          descricao: rec.nome,
+          valor: Number(rec.valor),
+          tipo: 'Receita',
+          status: 'Pago',
+          forma_pagamento: 'Pix',
+          data_vencimento: dateStr,
+          data_pagamento: dateStr,
+          conta_id: defaultConta
+        };
 
-                                    <div className="glass-card">
-                                        <h2 className="text-lg font-bold text-gray-700 mb-4">Últimas Movimentações</h2>
-                                        <div className="space-y-4">
-                                            {lancamentos.slice(0, 5).map(l => (
-                                                <div key={l.id} className="flex justify-between items-center border-b pb-2">
-                                                    <div>
-                                                        <p className="font-semibold text-gray-800">{l.descricao}</p>
-                                                        <p className="text-xs text-gray-500">{new Date(l.data_vencimento).toLocaleDateString('pt-BR')} • {l.status}</p>
-                                                    </div>
-                                                    <p className={`font-bold ${l.tipo === 'Receita' ? 'text-green-600' : 'text-red-600'}`}>
-                                                        {l.tipo === 'Receita' ? '+' : '-'} R$ {getValor(l.valor).toFixed(2)}
-                                                    </p>
-                                                </div>
-                                            ))}
-                                            {lancamentos.length === 0 && <p className="text-gray-400 text-sm text-center py-6">Banco zerado! Pronto para receber lançamentos.</p>}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+        const { data } = await supabase.from('lancamentos').insert([payload]).select('*, categorias_financeiras(nome), contas_bancarias(nome)');
+        if (data) setLancamentos([...lancamentos, ...data]);
+      };
 
-                        {abaAtiva === 'lancamentos' && (
-                            <div>
-                                <h1 className="text-3xl font-bold text-gray-800 mb-6">Todos os Lançamentos</h1>
-                                <div className="glass-card overflow-x-auto">
-                                    <table className="w-full text-left">
-                                        <thead>
-                                            <tr className="text-gray-500 text-sm uppercase border-b">
-                                                <th className="pb-3">Data</th>
-                                                <th className="pb-3">Descrição</th>
-                                                <th className="pb-3">Categoria</th>
-                                                <th className="pb-3">Tags</th>
-                                                <th className="pb-3">Status</th>
-                                                <th className="pb-3 text-right">Valor</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {lancamentos.map(l => (
-                                                <tr key={l.id} className="border-b last:border-0 hover:bg-gray-50">
-                                                    <td className="py-3 text-sm text-gray-700">{new Date(l.data_vencimento).toLocaleDateString('pt-BR')}</td>
-                                                    <td className="py-3 font-medium text-gray-800">{l.descricao}</td>
-                                                    <td className="py-3 text-sm text-gray-600">{l.categorias_financeiras?.nome || '-'}</td>
-                                                    <td className="py-3 text-xs">
-                                                        {l.tags && l.tags.map(t => (
-                                                            <span key={t} className="bg-gray-200 text-gray-700 px-2 py-1 rounded-full mr-1">{t}</span>
-                                                        ))}
-                                                    </td>
-                                                    <td className="py-3">
-                                                        <span className={`px-2 py-1 text-xs rounded-full font-semibold ${l.status === 'Pago' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                            {l.status}
-                                                        </span>
-                                                    </td>
-                                                    <td className={`py-3 font-bold text-right ${l.tipo === 'Receita' ? 'text-green-600' : 'text-red-600'}`}>
-                                                        R$ {getValor(l.valor).toFixed(2)}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            {lancamentos.length === 0 && (
-                                                <tr><td colSpan="6" className="text-center py-8 text-gray-500">Nenhum lançamento encontrado.</td></tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
+      const deleteTx = async (id) => {
+        await supabase.from('lancamentos').delete().eq('id', id);
+        setLancamentos(lancamentos.filter(l => l.id !== id));
+      };
 
-                        {abaAtiva === 'previsoes' && (
-                            <div>
-                                <h1 className="text-3xl font-bold text-gray-800 mb-6">Previsto x Realizado</h1>
-                                <div className="glass-card">
-                                    <p className="text-gray-600 text-center py-10">O módulo de previsões cruzará a tabela <strong>orcamentos_previstos</strong> com seus gastos em tempo real assim que começarmos os lançamentos automatizados.</p>
-                                </div>
-                            </div>
-                        )}
-                    </main>
-                </div>
-            );
+      const updateTx = async (id, field, val) => {
+        // Mapeia os campos da UI pro Supabase
+        let dbField = field;
+        let dbVal = val;
+        
+        if (field === 'nome') dbField = 'descricao';
+        if (field === 'tipo') dbField = 'forma_pagamento';
+        if (field === 'pago') { dbField = 'status'; dbVal = val ? 'Pago' : 'Pendente'; }
+        if (field === 'categoria') {
+           dbField = 'categoria_id'; 
+           dbVal = categorias.find(c => c.nome === val)?.id;
+        }
+        if (field === 'data') {
+           dbField = 'data_vencimento';
+           dbVal = `${CURRENT_YEAR}-${String(monthIdx + 1).padStart(2, '0')}-${String(val).padStart(2, '0')}`;
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+        const { data } = await supabase.from('lancamentos').update({ [dbField]: dbVal }).eq('id', id).select('*, categorias_financeiras(nome), contas_bancarias(nome)');
+        if (data && data.length > 0) {
+           setLancamentos(lancamentos.map(l => l.id === id ? data[0] : l));
+        }
+      };
+
+      // Processamento de Dados para a UI
+      const currentFiltered = lancamentos.filter(l => {
+        const lDate = new Date(l.data_vencimento + 'T00:00:00');
+        const matchesMonth = lDate.getMonth() === monthIdx && lDate.getFullYear() === CURRENT_YEAR;
+        const matchesConta = filtroContaId === "Todas" || l.conta_id === filtroContaId;
+        return matchesMonth && matchesConta;
+      });
+
+      const monthTxs = currentFiltered.filter(l => l.tipo === 'Despesa').map(l => ({
+        ...l, 
+        nome: l.descricao, 
+        data: parseInt(l.data_vencimento.split('-')[2]),
+        tipo: l.forma_pagamento,
+        categoria: l.categorias_financeiras?.nome || 'Outros',
+        pago: l.status === 'Pago'
+      }));
+
+      const monthRecs = currentFiltered.filter(l => l.tipo === 'Receita').map(l => ({
+        ...l, 
+        nome: l.descricao, 
+        data: parseInt(l.data_vencimento.split('-')[2])
+      }));
+
+      const totalDesp = monthTxs.reduce((s, t) => s + Number(t.valor || 0), 0);
+      const totalRec = monthRecs.reduce((s, r) => s + Number(r.valor || 0), 0);
+      const saldo = totalRec - totalDesp;
+
+      if (loading) return (
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#09090f", color:"#fff", fontFamily:"'Syne', sans-serif", flexDirection:"column", gap:16 }}>
+          <div style={{ fontSize:40, animation: "pulse 1.5s infinite" }}>🔄</div>
+          <div style={{ fontSize:14, color:"rgba(255,255,255,0.4)" }}>Sincronizando com Supabase...</div>
+        </div>
+      );
+
+      return (
+        <div style={{ minHeight:"100vh", background:"#09090f", color:"#f4f0eb", fontFamily:"'Syne', sans-serif", display:"flex" }}>
+          <style>{`
+            * { box-sizing: border-box; margin:0; padding:0; }
+            ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#333; border-radius:4px; }
+            @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+            @keyframes spin { to { transform:rotate(360deg); } }
+            @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.5; } }
+            .nav-item { transition: all 0.15s; cursor:pointer; }
+            .nav-item:hover { background: rgba(255,255,255,0.06) !important; }
+            .nav-item.active { background: rgba(99,102,241,0.2) !important; color: #818cf8 !important; }
+            .card { transition: transform 0.2s, box-shadow 0.2s; }
+            .card:hover { transform: translateY(-2px); }
+            .btn-primary { cursor:pointer; transition: all 0.15s; }
+            .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+            .tx-row:hover { background: rgba(255,255,255,0.04) !important; }
+            input, select { outline:none; }
+            input:focus, select:focus { border-color: rgba(99,102,241,0.6) !important; }
+          `}</style>
+
+          {/* ── SIDEBAR ── */}
+          <div style={{ width:240, background:"#0d0d18", borderRight:"1px solid rgba(255,255,255,0.05)", display:"flex", flexDirection:"column", padding:"24px 12px", position:"sticky", top:0, height:"100vh" }}>
+            <div style={{ padding:"0 8px 20px", borderBottom:"1px solid rgba(255,255,255,0.05)", marginBottom:16 }}>
+              <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-0.5px" }}>💼 Financeiro</div>
+            </div>
+
+            {/* Filtro de Conta Global */}
+            <div style={{ padding:"0 8px 16px", marginBottom:12, borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginBottom:6, textTransform:"uppercase", letterSpacing:1, fontFamily:"'JetBrains Mono', monospace" }}>Filtrar Conta</div>
+              <select value={filtroContaId} onChange={e => setFiltroContaId(e.target.value)}
+                style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color:"#f4f0eb", padding:"8px 10px", fontSize:12, fontFamily:"'Syne', sans-serif", cursor:"pointer" }}>
+                <option value="Todas" style={{ background:"#0d0d18" }}>Todas as Contas</option>
+                {contas.map(c => <option key={c.id} value={c.id} style={{ background:"#0d0d18" }}>{c.nome}</option>)}
+              </select>
+            </div>
+
+            {[
+              { id:"dashboard", icon:"▦", label:"Dashboard" },
+              { id:"lancamentos", icon:"↕", label:"Lançamentos" },
+              { id:"receitas", icon:"↑", label:"Receitas" },
+              { id:"categorias", icon:"◎", label:"Por Categoria" },
+              { id:"anual", icon:"⊞", label:"Visão Anual" },
+            ].map(n => (
+              <div key={n.id} className={`nav-item ${view===n.id?"active":""}`} onClick={() => setView(n.id)}
+                style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, marginBottom:4, color: view===n.id?"#818cf8":"rgba(255,255,255,0.5)", fontSize:13, fontWeight:600 }}>
+                <span style={{ fontFamily:"monospace", fontSize:16 }}>{n.icon}</span> {n.label}
+              </div>
+            ))}
+
+            <div style={{ flex:1 }}/>
+
+            <div style={{ padding:"12px 8px", borderTop:"1px solid rgba(255,255,255,0.05)" }}>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginBottom:6, textTransform:"uppercase", letterSpacing:1, fontFamily:"'JetBrains Mono', monospace" }}>Mês Ativo</div>
+              <select value={monthIdx} onChange={e => setMonthIdx(Number(e.target.value))}
+                style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color:"#f4f0eb", padding:"8px 10px", fontSize:13, cursor:"pointer" }}>
+                {MONTHS.map((m,i) => <option key={m} value={i} style={{ background:"#0d0d18" }}>{m}</option>)}
+              </select>
+            </div>
+
+            <button className="btn-primary" onClick={() => setScanOpen(true)}
+              style={{ margin:"8px 0 0", padding:"12px", background:"linear-gradient(135deg,#6366f1,#a855f7)", border:"none", borderRadius:12, color:"white", fontSize:14, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+              📸 Scan IA
+            </button>
+          </div>
+
+          {/* ── MAIN CONTENT ── */}
+          <div style={{ flex:1, overflow:"auto", animation:"fadeIn 0.3s ease" }}>
+            <div style={{ padding:"20px 32px", borderBottom:"1px solid rgba(255,255,255,0.05)", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, background:"rgba(9,9,15,0.9)", backdropFilter:"blur(12px)", zIndex:10 }}>
+              <div>
+                <div style={{ fontSize:22, fontWeight:800, letterSpacing:"-0.5px" }}>
+                  {view==="dashboard"&&"Dashboard"}{view==="lancamentos"&&"Lançamentos"}{view==="receitas"&&"Receitas"}{view==="categorias"&&"Por Categoria"}{view==="anual"&&"Visão Anual"}
+                </div>
+                <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:2, fontFamily:"'JetBrains Mono', monospace" }}>{MONTHS[monthIdx]} {CURRENT_YEAR}</div>
+              </div>
+              <div style={{ display:"flex", gap:12 }}>
+                <StatPill label="Receitas" value={fmt(totalRec)} color="#22c55e"/>
+                <StatPill label="Despesas" value={fmt(totalDesp)} color="#f87171"/>
+                <StatPill label="Saldo" value={fmt(saldo)} color={saldo>=0?"#22c55e":"#f87171"}/>
+              </div>
+            </div>
+
+            <div style={{ padding:"28px 32px" }}>
+              {view==="dashboard" && <Dashboard monthTxs={monthTxs} monthRecs={monthRecs} totalDesp={totalDesp} totalRec={totalRec} saldo={saldo} />}
+              {view==="lancamentos" && <Lancamentos txs={monthTxs} onDelete={deleteTx} onUpdate={updateTx}/>}
+              {view==="receitas" && <Receitas recs={monthRecs} onDelete={deleteTx} onAdd={addReceita}/>}
+              {view==="categorias" && <Categorias txs={monthTxs} totalDesp={totalDesp}/>}
+              {view==="anual" && <Anual lancamentos={lancamentos} />}
+            </div>
+          </div>
+
+          {scanOpen && <ScanModal onClose={() => setScanOpen(false)} onAdd={(txs) => { addTransactions(txs); setScanOpen(false); }} monthIdx={monthIdx}/>}
+        </div>
+      );
+    }
+
+    /* ─── COMPONENTES SECUNDÁRIOS ────────────────────────────── */
+    function StatPill({ label, value, color }) {
+      return (
+        <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:10, padding:"8px 14px", textAlign:"center" }}>
+          <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", letterSpacing:0.8, fontFamily:"'JetBrains Mono', monospace" }}>{label}</div>
+          <div style={{ fontSize:15, fontWeight:700, color, marginTop:2 }}>{value}</div>
+        </div>
+      );
+    }
+
+    function Dashboard({ monthTxs, monthRecs, totalDesp, totalRec, saldo }) {
+      const catTotals = ALL_CATS.map(c => ({ name:c, valor: monthTxs.filter(t=>t.categoria===c).reduce((s,t)=>s+Number(t.valor||0),0) })).filter(c=>c.valor>0).sort((a,b)=>b.valor-a.valor);
+      const tipoPieData = TIPOS.map(tp => ({ name:tp, valor: monthTxs.filter(t=>t.tipo===tp).reduce((s,t)=>s+Number(t.valor||0),0) })).filter(t=>t.valor>0);
+      const TIPO_COLORS = ["#6366f1","#a855f7","#ec4899","#f59e0b","#22c55e"];
+
+      const last7 = monthTxs.reduce((acc,t) => { const k = t.data; acc[k] = (acc[k]||0)+Number(t.valor||0); return acc; }, {});
+      const lineData = Object.entries(last7).sort((a,b)=>Number(a[0])-Number(b[0])).map(([d,v])=>({ dia:d, valor:v }));
+      const recentTxs = [...monthTxs].sort((a,b)=>Number(b.data)-Number(a.data)).slice(0,5);
+
+      return (
+        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16 }}>
+            {[
+              { label:"Total Despesas", value:fmt(totalDesp), sub:`${monthTxs.length} lançamentos`, color:"#f87171", icon:"💸" },
+              { label:"Total Receitas", value:fmt(totalRec), sub:`${monthRecs.length} entradas`, color:"#22c55e", icon:"💵" },
+              { label:"Saldo do Mês", value:fmt(saldo), sub: saldo>=0?"Positivo 🎉":"Atenção ⚠️", color:saldo>=0?"#22c55e":"#f87171", icon:"⚖️" },
+              { label:"Maior Gasto", value: catTotals[0] ? fmt(catTotals[0].valor) : "R$ 0,00", sub:catTotals[0]?.name||"—", color:"#a855f7", icon:"📊" },
+            ].map(k => (
+              <div key={k.label} className="card" style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
+                <div style={{ fontSize:24, marginBottom:8 }}>{k.icon}</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", letterSpacing:0.8, fontFamily:"'JetBrains Mono', monospace", marginBottom:4 }}>{k.label}</div>
+                <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.value}</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:4 }}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:16 }}>
+            <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
+              <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Gastos por Categoria</div>
+              {catTotals.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={catTotals.slice(0,8)} layout="vertical" margin={{left:0,right:20}}>
+                    <XAxis type="number" hide/>
+                    <YAxis type="category" dataKey="name" width={140} tick={{ fill:"rgba(255,255,255,0.5)", fontSize:11 }}/>
+                    <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8 }} labelStyle={{ color:"#fff" }}/>
+                    <Bar dataKey="valor" radius={[0,6,6,0]}>
+                      {catTotals.slice(0,8).map((e,i) => <Cell key={i} fill={CAT_COLORS[e.name]||"#6366f1"}/>)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <Empty text="Nenhum lançamento no mês"/>}
+            </div>
+
+            <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
+              <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Por Pagamento</div>
+              {tipoPieData.length > 0 ? (<>
+                <ResponsiveContainer width="100%" height={150}>
+                  <PieChart>
+                    <Pie data={tipoPieData} dataKey="valor" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65}>
+                      {tipoPieData.map((e,i) => <Cell key={i} fill={TIPO_COLORS[i%TIPO_COLORS.length]}/>)}
+                    </Pie>
+                    <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8 }}/>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:8 }}>
+                  {tipoPieData.map((t,i) => (
+                    <div key={t.name} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"rgba(255,255,255,0.5)" }}>
+                      <div style={{ width:8, height:8, borderRadius:"50%", background:TIPO_COLORS[i%TIPO_COLORS.length] }}/>
+                      {t.name}
+                    </div>
+                  ))}
+                </div>
+              </>) : <Empty text="Nenhum dado"/>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Lancamentos({ txs, onDelete, onUpdate }) {
+      const [search, setSearch] = useState("");
+      const [catFilter, setCatFilter] = useState("Todas");
+      const [editId, setEditId] = useState(null);
+
+      const filtered = txs.filter(t => (catFilter==="Todas" || t.categoria===catFilter) && (t.nome||"").toLowerCase().includes(search.toLowerCase())).sort((a,b)=>Number(b.data)-Number(a.data));
+      const total = filtered.reduce((s,t)=>s+Number(t.valor||0),0);
+
+      const inpS = { background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:7, color:"#f4f0eb", padding:"7px 10px", fontSize:13, width:"100%" };
+
+      return (
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <div style={{ display:"flex", gap:12 }}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar lançamento..." style={{ flex:1, ...inpS }}/>
+            <select value={catFilter} onChange={e=>setCatFilter(e.target.value)} style={{ ...inpS, width: "auto" }}>
+              <option style={{background:"#0d0d18"}}>Todas</option>
+              {ALL_CATS.map(c=><option key={c} style={{background:"#0d0d18"}}>{c}</option>)}
+            </select>
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"2.5fr 60px 70px 110px 1fr 110px 70px", gap:8, padding:"6px 12px", fontSize:10, color:"rgba(255,255,255,0.3)", textTransform:"uppercase", fontFamily:"'JetBrains Mono', monospace" }}>
+            <span>Nome</span><span>Pago</span><span>Dia</span><span>Tipo</span><span>Categoria</span><span style={{textAlign:"right"}}>Valor</span><span></span>
+          </div>
+
+          {filtered.length===0 ? <Empty text="Nenhum lançamento encontrado"/> : filtered.map(t => (
+            <div key={t.id} className="tx-row" style={{ display:"grid", gridTemplateColumns:"2.5fr 60px 70px 110px 1fr 110px 70px", gap:8, padding:"10px 12px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10, alignItems:"center" }}>
+              {editId===t.id ? (<>
+                <input value={t.nome} onChange={e=>onUpdate(t.id,"nome",e.target.value)} style={inpS}/>
+                <select value={t.pago} onChange={e=>onUpdate(t.id,"pago",e.target.value==="true")} style={inpS}>
+                  <option value="true">✅</option><option value="false">⏳</option>
+                </select>
+                <input type="number" value={t.data} onChange={e=>onUpdate(t.id,"data",e.target.value)} style={inpS} min={1} max={31}/>
+                <select value={t.tipo} onChange={e=>onUpdate(t.id,"tipo",e.target.value)} style={inpS}>
+                  {TIPOS.map(tp=><option key={tp} style={{background:"#0d0d18"}}>{tp}</option>)}
+                </select>
+                <select value={t.categoria} onChange={e=>onUpdate(t.id,"categoria",e.target.value)} style={inpS}>
+                  {ALL_CATS.map(c=><option key={c} style={{background:"#0d0d18"}}>{c}</option>)}
+                </select>
+                <input type="number" value={t.valor} onChange={e=>onUpdate(t.id,"valor",e.target.value)} style={{...inpS,textAlign:"right"}} step="0.01"/>
+              </>) : (<>
+                <div style={{ fontSize:13, fontWeight:500, overflow:"hidden", whiteSpace:"nowrap" }}>{t.nome}</div>
+                <div style={{ fontSize:12 }}>{t.pago?"✅":"⏳"}</div>
+                <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontFamily:"'JetBrains Mono'" }}>{t.data}</div>
+                <div style={{ fontSize:11, background:"rgba(255,255,255,0.06)", borderRadius:6, padding:"2px 8px", textAlign:"center" }}>{t.tipo}</div>
+                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:CAT_COLORS[t.categoria]||"#64748b", flexShrink:0 }}/>
+                  <span style={{ fontSize:11, overflow:"hidden", whiteSpace:"nowrap" }}>{t.categoria}</span>
+                </div>
+                <div style={{ fontSize:14, fontWeight:700, color:"#f87171", textAlign:"right", fontFamily:"'JetBrains Mono'" }}>{fmt(t.valor)}</div>
+              </>)}
+              <div style={{ display:"flex", gap:4, justifyContent:"flex-end" }}>
+                <button onClick={()=>setEditId(editId===t.id?null:t.id)} style={{ background:"rgba(99,102,241,0.2)", borderRadius:6, color:"#818cf8", padding:"4px 8px", fontSize:12 }}>{editId===t.id?"✓":"✏️"}</button>
+                <button onClick={()=>onDelete(t.id)} style={{ background:"rgba(239,68,68,0.15)", borderRadius:6, color:"#f87171", padding:"4px 8px", fontSize:12 }}>✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function Receitas({ recs, onDelete, onAdd }) {
+      const [form, setForm] = useState({ nome:"", data:now.getDate(), valor:"" });
+      const total = recs.reduce((s,r)=>s+Number(r.valor||0),0);
+      const inpS = { background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:7, color:"#f4f0eb", padding:"7px 10px", fontSize:13, width:"100%" };
+
+      return (
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <div style={{ background:"rgba(34,197,94,0.05)", border:"1px solid rgba(34,197,94,0.15)", borderRadius:16, padding:20 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#22c55e", marginBottom:14 }}>+ Nova Receita</div>
+            <div style={{ display:"grid", gridTemplateColumns:"2fr 80px 130px 100px", gap:10, alignItems:"end" }}>
+              <div><div style={{fontSize:10, color:"rgba(255,255,255,0.35)", marginBottom:4}}>Nome</div><input value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} style={inpS}/></div>
+              <div><div style={{fontSize:10, color:"rgba(255,255,255,0.35)", marginBottom:4}}>Dia</div><input type="number" value={form.data} onChange={e=>setForm({...form,data:e.target.value})} style={inpS}/></div>
+              <div><div style={{fontSize:10, color:"rgba(255,255,255,0.35)", marginBottom:4}}>Valor</div><input type="number" value={form.valor} onChange={e=>setForm({...form,valor:e.target.value})} style={{...inpS,color:"#22c55e"}}/></div>
+              <button onClick={() => { onAdd(form); setForm({nome:"", data:now.getDate(), valor:""}) }} style={{ background:"linear-gradient(135deg,#22c55e,#16a34a)", borderRadius:10, color:"white", padding:"10px", fontWeight:700 }}>Adicionar</button>
+            </div>
+          </div>
+          {recs.map(r => (
+            <div key={r.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10 }}>
+              <div style={{ width:32, height:32, borderRadius:"50%", background:"rgba(34,197,94,0.15)", display:"flex", alignItems:"center", justifyContent:"center" }}>💵</div>
+              <div style={{ flex:1 }}><div style={{ fontSize:14, fontWeight:600 }}>{r.nome}</div><div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>Dia {r.data}</div></div>
+              <div style={{ fontSize:18, fontWeight:800, color:"#22c55e" }}>{fmt(r.valor)}</div>
+              <button onClick={()=>onDelete(r.id)} style={{ background:"rgba(239,68,68,0.15)", borderRadius:6, color:"#f87171", padding:"6px 10px", fontSize:12 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function Categorias({ txs, totalDesp }) {
+      const catData = ALL_CATS.map(c => {
+        const catTxs = txs.filter(t=>t.categoria===c);
+        const valor = catTxs.reduce((s,t)=>s+Number(t.valor||0),0);
+        return { cat:c, valor, count:catTxs.length, pct: totalDesp>0 ? (valor/totalDesp*100).toFixed(1) : 0 };
+      }).filter(c=>c.valor>0).sort((a,b)=>b.valor-a.valor);
+
+      return (
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {catData.map(c => (
+            <div key={c.cat} style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:14, padding:"16px 20px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:12, height:12, borderRadius:3, background:CAT_COLORS[c.cat]||"#64748b" }}/>
+                  <div style={{ fontSize:14, fontWeight:700 }}>{c.cat}</div>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+                  <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{c.pct}%</span>
+                  <span style={{ fontSize:17, fontWeight:800, color:"#f87171" }}>{fmt(c.valor)}</span>
+                </div>
+              </div>
+              <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:6, height:6, overflow:"hidden" }}>
+                <div style={{ width:`${c.pct}%`, height:"100%", background:CAT_COLORS[c.cat]||"#6366f1", borderRadius:6 }}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function Anual({ lancamentos }) {
+      const monthSums = MONTHS.map((m,i) => {
+        const desp = lancamentos.filter(l => l.tipo==='Despesa' && new Date(l.data_vencimento).getMonth() === i).reduce((s,t)=>s+Number(t.valor),0);
+        const rec = lancamentos.filter(l => l.tipo==='Receita' && new Date(l.data_vencimento).getMonth() === i).reduce((s,t)=>s+Number(t.valor),0);
+        return { mes: MONTH_SHORT[i], desp, rec, saldo: rec-desp };
+      });
+
+      return (
+        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:16, padding:"20px" }}>
+          <div style={{ fontSize:13, fontWeight:700, marginBottom:16, color:"rgba(255,255,255,0.6)" }}>Resumo Anual</div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={monthSums}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
+              <XAxis dataKey="mes" tick={{ fill:"rgba(255,255,255,0.4)", fontSize:11 }}/>
+              <YAxis tick={{ fill:"rgba(255,255,255,0.4)", fontSize:11 }}/>
+              <Tooltip formatter={v=>fmt(v)} contentStyle={{ background:"#1a1a2e", borderRadius:8 }}/>
+              <Bar dataKey="rec" fill="#22c55e" radius={[4,4,0,0]}/>
+              <Bar dataKey="desp" fill="#f87171" radius={[4,4,0,0]}/>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    function Empty({ text }) {
+      return <div style={{ textAlign:"center", padding:"40px 20px", color:"rgba(255,255,255,0.2)", fontSize:13 }}><div style={{ fontSize:32, marginBottom:8 }}>📭</div>{text}</div>;
+    }
+
+    // O modal original manteve-se igualzinho visualmente, apenas enviará para o Supabase ao clicar "Confirmar"
+    function ScanModal({ onClose, onAdd, monthIdx }) {
+      const [step, setStep] = useState("upload");
+      const [expenses, setExpenses] = useState([]);
+      
+      const simulateProcess = () => {
+        setStep("processing");
+        setTimeout(() => {
+          setExpenses([{ id:1, nome: "Mercado Novo", data: 15, tipo: "Cartão 01", categoria: "Mercado", valor: 150.50, pago: true }]);
+          setStep("review");
+        }, 1500);
+      };
+
+      const inpS = { background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:7, color:"#f4f0eb", padding:"7px 10px", fontSize:11, width:"100%" };
+
+      return (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div style={{ background:"#0f0f1a", border:"1px solid rgba(255,255,255,0.1)", borderRadius:20, width:"100%", maxWidth:780, maxHeight:"90vh", overflow:"auto", display:"flex", flexDirection:"column" }}>
+            <div style={{ padding:"20px 24px", borderBottom:"1px solid rgba(255,255,255,0.07)", display:"flex", justifyContent:"space-between" }}>
+              <div style={{ fontSize:18, fontWeight:800 }}>{step==="upload"?"📸 Escanear Extrato":step==="processing"?"🤖 Processando...":"✅ Revise os Lançamentos"}</div>
+              <button onClick={onClose} style={{ background:"rgba(255,255,255,0.06)", borderRadius:8, color:"rgba(255,255,255,0.5)", padding:"6px 12px" }}>✕</button>
+            </div>
+            <div style={{ padding:24 }}>
+              {step==="upload" && <div onClick={simulateProcess} style={{ border:`2px dashed rgba(255,255,255,0.12)`, borderRadius:16, padding:"60px 40px", textAlign:"center", cursor:"pointer" }}>📄<br/>Clique para simular leitura da IA (Anthropic)</div>}
+              {step==="processing" && <div style={{ textAlign:"center", padding:"60px 0" }}><div style={{ fontSize:24, animation:"spin 1s infinite" }}>🔄</div></div>}
+              {step==="review" && (
+                <div>
+                  {expenses.map((e,idx) => (
+                    <div key={idx} style={{ display:"grid", gridTemplateColumns:"2fr 55px 60px 110px 1fr 100px", gap:6, padding:"8px", background:"rgba(255,255,255,0.03)", borderRadius:8 }}>
+                      <input value={e.nome} onChange={ev=>setExpenses(expenses.map((ex,i)=>i===idx?{...ex,nome:ev.target.value}:ex))} style={inpS}/>
+                      <select value={e.pago} onChange={ev=>setExpenses(expenses.map((ex,i)=>i===idx?{...ex,pago:ev.target.value==="true"}:ex))} style={inpS}><option value="true">✅</option><option value="false">⏳</option></select>
+                      <input type="number" value={e.data} onChange={ev=>setExpenses(expenses.map((ex,i)=>i===idx?{...ex,data:ev.target.value}:ex))} style={inpS}/>
+                      <select value={e.tipo} style={inpS}><option>Pix</option><option>Cartão 01</option></select>
+                      <select value={e.categoria} style={inpS}><option>Mercado</option><option>Outros</option></select>
+                      <input type="number" value={e.valor} style={inpS}/>
+                    </div>
+                  ))}
+                  <button onClick={() => onAdd(expenses)} style={{ marginTop: 20, width: "100%", background:"linear-gradient(135deg,#6366f1,#a855f7)", borderRadius:12, color:"white", padding:"12px", fontWeight:700 }}>Confirmar e Salvar no Supabase</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
 </body>
 </html>
