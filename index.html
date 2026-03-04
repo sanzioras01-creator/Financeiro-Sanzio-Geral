@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Financeiro Inteligente</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { background-color: #f3f4f6; font-family: 'Inter', sans-serif; }
+        .glass-card { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); padding: 20px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } = window.Recharts;
+
+        // Configuração Direta do seu Supabase
+        const SUPABASE_URL = 'https://wqajkohquvoukljpkqet.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndxYWprb2hxdXZvdWtsanBrcWV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NzIzNjIsImV4cCI6MjA4ODE0ODM2Mn0.-GsT75uLNZJJuFErpYjvOZ0lNJWlrg2qHpNUhGqUgus';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        function App() {
+            const [lancamentos, setLancamentos] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [abaAtiva, setAbaAtiva] = useState('dashboard');
+
+            // Busca os dados no Supabase
+            useEffect(() => {
+                async function fetchData() {
+                    const { data, error } = await supabase
+                        .from('lancamentos')
+                        .select('*, categorias_financeiras(nome, cor_hex), contas_bancarias(nome)')
+                        .order('data_vencimento', { ascending: false });
+                    
+                    if (data) setLancamentos(data);
+                    setLoading(false);
+                }
+                fetchData();
+            }, []);
+
+            // Cálculos dos KPIs
+            const totalReceitas = lancamentos.filter(l => l.tipo === 'Receita' && l.status === 'Pago').reduce((acc, curr) => acc + curr.valor, 0);
+            const totalDespesas = lancamentos.filter(l => l.tipo === 'Despesa' && l.status === 'Pago').reduce((acc, curr) => acc + curr.valor, 0);
+            const aPagar = lancamentos.filter(l => l.tipo === 'Despesa' && l.status === 'Pendente').reduce((acc, curr) => acc + curr.valor, 0);
+            const saldoAtual = totalReceitas - totalDespesas;
+
+            // Dados para o Gráfico
+            const despesasPorCategoria = lancamentos
+                .filter(l => l.tipo === 'Despesa' && l.status === 'Pago' && l.categorias_financeiras)
+                .reduce((acc, curr) => {
+                    const cat = curr.categorias_financeiras.nome;
+                    acc[cat] = (acc[cat] || 0) + curr.valor;
+                    return acc;
+                }, {});
+            
+            const pieData = Object.keys(despesasPorCategoria).map(key => ({
+                name: key, value: despesasPorCategoria[key]
+            }));
+
+            const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+            if (loading) return <div className="flex h-screen items-center justify-center text-xl font-semibold text-gray-500">Conectando ao Supabase...</div>;
+
+            return (
+                <div className="flex h-screen overflow-hidden">
+                    {/* Menu Lateral */}
+                    <aside className="w-64 bg-gray-900 text-white flex flex-col">
+                        <div className="p-6 text-2xl font-bold tracking-wider text-blue-400">Financeiro App</div>
+                        <nav className="flex-1 px-4 space-y-2">
+                            <button onClick={() => setAbaAtiva('dashboard')} className={`w-full text-left p-3 rounded-lg font-medium ${abaAtiva === 'dashboard' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>📊 Dashboard</button>
+                            <button onClick={() => setAbaAtiva('lancamentos')} className={`w-full text-left p-3 rounded-lg font-medium ${abaAtiva === 'lancamentos' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>💸 Lançamentos</button>
+                            <button onClick={() => setAbaAtiva('previsoes')} className={`w-full text-left p-3 rounded-lg font-medium ${abaAtiva === 'previsoes' ? 'bg-blue-600' : 'hover:bg-gray-800'}`}>🎯 Previsto x Realizado</button>
+                        </nav>
+                        <div className="p-4 text-xs text-gray-500 text-center">Conectado via API Rest</div>
+                    </aside>
+
+                    {/* Área Principal */}
+                    <main className="flex-1 overflow-y-auto p-8">
+                        
+                        {abaAtiva === 'dashboard' && (
+                            <div>
+                                <h1 className="text-3xl font-bold text-gray-800 mb-8">Visão Geral</h1>
+                                
+                                {/* Cards de KPI */}
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                                    <div className="glass-card border-l-4 border-blue-500">
+                                        <p className="text-gray-500 text-sm font-semibold uppercase">Saldo Realizado</p>
+                                        <p className="text-3xl font-bold text-gray-800 mt-2">R$ {saldoAtual.toFixed(2)}</p>
+                                    </div>
+                                    <div className="glass-card border-l-4 border-green-500">
+                                        <p className="text-gray-500 text-sm font-semibold uppercase">Receitas</p>
+                                        <p className="text-3xl font-bold text-green-600 mt-2">R$ {totalReceitas.toFixed(2)}</p>
+                                    </div>
+                                    <div className="glass-card border-l-4 border-red-500">
+                                        <p className="text-gray-500 text-sm font-semibold uppercase">Despesas Pagas</p>
+                                        <p className="text-3xl font-bold text-red-600 mt-2">R$ {totalDespesas.toFixed(2)}</p>
+                                    </div>
+                                    <div className="glass-card border-l-4 border-orange-500">
+                                        <p className="text-gray-500 text-sm font-semibold uppercase">Contas a Pagar</p>
+                                        <p className="text-3xl font-bold text-orange-600 mt-2">R$ {aPagar.toFixed(2)}</p>
+                                    </div>
+                                </div>
+
+                                {/* Gráficos */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="glass-card">
+                                        <h2 className="text-lg font-bold text-gray-700 mb-4">Despesas por Categoria</h2>
+                                        {pieData.length > 0 ? (
+                                            <div className="h-64">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <PieChart>
+                                                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                                            {pieData.map((entry, index) => (
+                                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                            ))}
+                                                        </Pie>
+                                                        <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        ) : (
+                                            <p className="text-gray-400 text-center mt-20">Nenhum dado para exibir.</p>
+                                        )}
+                                    </div>
+
+                                    <div className="glass-card">
+                                        <h2 className="text-lg font-bold text-gray-700 mb-4">Últimas Movimentações</h2>
+                                        <div className="space-y-4">
+                                            {lancamentos.slice(0, 5).map(l => (
+                                                <div key={l.id} className="flex justify-between items-center border-b pb-2">
+                                                    <div>
+                                                        <p className="font-semibold text-gray-800">{l.descricao}</p>
+                                                        <p className="text-xs text-gray-500">{new Date(l.data_vencimento).toLocaleDateString('pt-BR')} • {l.status}</p>
+                                                    </div>
+                                                    <p className={`font-bold ${l.tipo === 'Receita' ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {l.tipo === 'Receita' ? '+' : '-'} R$ {l.valor.toFixed(2)}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                            {lancamentos.length === 0 && <p className="text-gray-400 text-sm">Nenhum lançamento encontrado.</p>}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {abaAtiva === 'lancamentos' && (
+                            <div>
+                                <h1 className="text-3xl font-bold text-gray-800 mb-6">Todos os Lançamentos</h1>
+                                <div className="glass-card overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className="text-gray-500 text-sm uppercase border-b">
+                                                <th className="pb-3">Data</th>
+                                                <th className="pb-3">Descrição</th>
+                                                <th className="pb-3">Categoria</th>
+                                                <th className="pb-3">Tags</th>
+                                                <th className="pb-3">Status</th>
+                                                <th className="pb-3">Valor</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {lancamentos.map(l => (
+                                                <tr key={l.id} className="border-b last:border-0 hover:bg-gray-50">
+                                                    <td className="py-3 text-sm text-gray-700">{new Date(l.data_vencimento).toLocaleDateString('pt-BR')}</td>
+                                                    <td className="py-3 font-medium text-gray-800">{l.descricao}</td>
+                                                    <td className="py-3 text-sm text-gray-600">{l.categorias_financeiras?.nome || '-'}</td>
+                                                    <td className="py-3 text-xs">
+                                                        {l.tags && l.tags.map(t => (
+                                                            <span key={t} className="bg-gray-200 text-gray-700 px-2 py-1 rounded-full mr-1">{t}</span>
+                                                        ))}
+                                                    </td>
+                                                    <td className="py-3">
+                                                        <span className={`px-2 py-1 text-xs rounded-full font-semibold ${l.status === 'Pago' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                            {l.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className={`py-3 font-bold ${l.tipo === 'Receita' ? 'text-green-600' : 'text-red-600'}`}>
+                                                        R$ {l.valor.toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {abaAtiva === 'previsoes' && (
+                            <div>
+                                <h1 className="text-3xl font-bold text-gray-800 mb-6">Previsto x Realizado</h1>
+                                <div className="glass-card">
+                                    <p className="text-gray-600 text-center py-10">O módulo de previsões cruzará a tabela <strong>orcamentos_previstos</strong> com seus gastos em tempo real assim que os primeiros orçamentos forem definidos pela inteligência artificial.</p>
+                                </div>
+                            </div>
+                        )}
+
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
