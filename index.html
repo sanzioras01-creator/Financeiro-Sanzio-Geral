@@ -112,7 +112,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   </div>
   <div class="kps">
     <div class="kp tr"><div class="kl">Receitas</div><div class="kv ps" id="kR">R$ 0</div></div>
-    <div class="kp td"><div class="kl">Despesas</div><div class="kv ng" id="kD">R$ 0</div></div>
+    <div class="kp td"><div class="kl">Despesas</div><div class="kv ng" id="kD">R$ 0</div><div class="ks" id="kDs"></div></div>
     <div class="kp tf"><div class="kl">Fixas do Mês</div><div class="kv lr" id="kF">R$ 0</div><div class="ks" id="kFs"></div></div>
     <div class="kp ts"><div class="kl">Saldo</div><div class="kv" id="kS">R$ 0</div></div>
   </div>
@@ -194,6 +194,9 @@ let T=[],CO=[],CA=[];
 let mA=new Date().getMonth(), aA=2026, cA='todas', fCL='todas', fCC='todas';
 let ch1=null,ch2=null,ch3=null;
 
+// Helper: checa se lançamento foi efetivamente pago
+function isPago(l){return(l.status||'').toLowerCase()==='pago';}
+
 async function ap(t,q=''){
   try{const r=await fetch(`${SU}/rest/v1/${t}?${q}`,{headers:{'apikey':SK,'Authorization':`Bearer ${SK}`,'Content-Type':'application/json'}});if(!r.ok)throw new Error(r.status);return await r.json();}catch(e){console.error(t,e);return[];}
 }
@@ -207,12 +210,10 @@ async function init(){
 }
 
 function bS(){
-  // Mes
   document.querySelectorAll('.sM2,#sM').forEach(s=>{
     s.innerHTML='';
     MN.forEach((m,i)=>{const o=document.createElement('option');o.value=i;o.textContent=m.substring(0,3)+'/'+aA;if(i===mA)o.selected=true;s.appendChild(o);});
   });
-  // Conta
   document.querySelectorAll('.sC2,#sC').forEach(s=>{
     s.innerHTML='<option value="todas">Todas contas</option>';
     CO.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.nome+(c.tipo==='empresarial'?' 🏢':'');s.appendChild(o);});
@@ -251,18 +252,38 @@ function txH(l){
   return`<div class="tx"><div class="ti" style="background:${isD?'rgba(255,107,122,.12)':'rgba(93,232,160,.12)'}">${ic}</div><div class="tn"><div class="tnm">${l.descricao}${b}</div><div class="tmt">${fd(l.data_vencimento)} · ${cat} · ${l.forma_pagamento||''}</div></div><div class="tv ${isD?'d':'r'}">${isD?'-':'+'}${fmt(l.valor)}</div></div>`;
 }
 
-// DASHBOARD
+// =============================================
+// DASHBOARD - CORREÇÃO: Despesas = só o que foi pago
+// =============================================
 function rD(){
-  const d=fl(mA,cA),dp=d.filter(l=>l.tipo==='despesa'),rc=d.filter(l=>l.tipo==='receita'),fx=dp.filter(l=>l.recorrente===true);
-  const tD=dp.reduce((s,l)=>s+Number(l.valor),0),tR=rc.reduce((s,l)=>s+Number(l.valor),0),tF=fx.reduce((s,l)=>s+Number(l.valor),0),sl=tR-tD;
+  const d=fl(mA,cA);
+  // TODAS as despesas do mês (para fixas card)
+  const allDp=d.filter(l=>l.tipo==='despesa');
+  // Despesas PAGAS = variáveis + fixas que já foram pagas
+  const dp=allDp.filter(l=>!l.recorrente||isPago(l));
+  const rc=d.filter(l=>l.tipo==='receita');
+  // Fixas: todas as recorrentes do mês
+  const fx=allDp.filter(l=>l.recorrente===true);
+  const fxPagas=fx.filter(isPago);
+
+  const tD=dp.reduce((s,l)=>s+Number(l.valor),0);
+  const tR=rc.reduce((s,l)=>s+Number(l.valor),0);
+  const tF=fx.reduce((s,l)=>s+Number(l.valor),0);
+  const sl=tR-tD;
+
   document.getElementById('kR').textContent=fmt(tR);
   document.getElementById('kD').textContent=fmt(tD);
+  document.getElementById('kDs').textContent=dp.filter(l=>l.tipo==='despesa').length+' pagos';
   document.getElementById('kF').textContent=fmt(tF);
-  document.getElementById('kFs').textContent=fx.length+' fixas pagas';
+  document.getElementById('kFs').textContent=fxPagas.length+'/'+fx.length+' pagas';
   const ks=document.getElementById('kS');
   ks.textContent=(sl>=0?'+':'-')+' '+fmt(sl);ks.className='kv '+(sl>=0?'ps':'ng');
+
   rFC(tR,tD,tF,dp);rC1(dp);rC2(dp);
-  const u=d.slice(0,10),el=document.getElementById('tU');
+
+  // Últimos lançamentos: excluir fixas pendentes
+  const u=d.filter(l=>!l.recorrente||isPago(l)).slice(0,10);
+  const el=document.getElementById('tU');
   if(!u.length){el.innerHTML='<div class="ey"><div class="ei">📭</div><p>Sem lançamentos</p></div>';return;}
   el.innerHTML=u.map(txH).join('');
 }
@@ -273,7 +294,6 @@ function rFC(tR,tD,tF,dp){
   const dM=new Date(aA,mA+1,0).getDate(),dP=Math.min(da,dM);
   const dV=dp.filter(l=>!l.recorrente).reduce((s,l)=>s+Number(l.valor),0);
   const md=dP>0?dV/dP:0,dR=dM-dP;
-  // Fixas referência
   const fr={};T.filter(l=>l.recorrente&&l.tipo==='despesa').forEach(l=>{if(!fr[l.descricao]||Number(l.valor)>Number(fr[l.descricao]))fr[l.descricao]=l.valor;});
   const tFR=Object.values(fr).reduce((s,v)=>s+Number(v),0);
   const pD=tFR+dV+(md*dR),pS=tR-pD;
@@ -288,7 +308,7 @@ function rFC(tR,tD,tF,dp){
     <div class="fc-r"><span class="lb" style="font-weight:600;color:var(--text)">Saldo projetado</span><span class="vl ${pS>=0?'ps':'ng'}" style="font-size:13px">${pS>=0?'+':''}${fmt(pS)}</span></div>`;
 }
 
-// CHARTS
+// CHARTS - Usam apenas despesas pagas (dp já filtrado)
 function rC1(dp){
   const g={};dp.forEach(l=>{const c=gCa(l),co=gCo(l);if(!g[c])g[c]={t:0,co};g[c].t+=Number(l.valor);});
   const lb=Object.keys(g),vl=lb.map(k=>g[k].t),cl=lb.map(k=>g[k].co);
@@ -302,9 +322,13 @@ function rC2(dp){
   ch2=new Chart(document.getElementById('c2'),{type:'bar',data:{labels:d.map(x=>x+'/'+String(mA+1).padStart(2,'0')),datasets:[{data:v,backgroundColor:'rgba(255,107,122,.5)',borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#4a5568',font:{size:8}},grid:{display:false}},y:{ticks:{color:'#4a5568',font:{size:8},callback:v=>'R$'+v},grid:{color:'rgba(100,116,139,.08)'}}}}});
 }
 
-// LANÇAMENTOS
+// =============================================
+// LANÇAMENTOS - CORREÇÃO: Excluir recorrentes
+// =============================================
 function rL(){
-  const d=fl(mA,cA),src=(document.getElementById('sL')?.value||'').toLowerCase();
+  // Filtra FORA os recorrentes — eles só aparecem na aba Fixas
+  const d=fl(mA,cA).filter(l=>!l.recorrente);
+  const src=(document.getElementById('sL')?.value||'').toLowerCase();
   const cu=[...new Set(d.map(gCa))].sort();
   document.getElementById('chL').innerHTML=`<button class="ch ${fCL==='todas'?'on':''}" onclick="fCL='todas';rL()">Todas</button>`+cu.map(c=>`<button class="ch ${fCL===c?'on':''}" onclick="fCL='${c.replace(/'/g,"\\'")}';rL()">${c}</button>`).join('');
   let f=d;
@@ -325,14 +349,19 @@ function rFx(){
   const el=document.getElementById('lF');
   if(!ls.length){el.innerHTML='<div class="ey"><div class="ei">📌</div><p>Nenhuma fixa</p></div>';return;}
   el.innerHTML=ls.map(l=>{
-    const ct=gCa(l),pg=(l.status||'').toLowerCase()==='pago',cn=gCN(l);
+    const ct=gCa(l),pg=isPago(l),cn=gCN(l);
     return`<div class="fi"><div class="fl2"><div class="fd ${pg?'ok':'pd'}"></div><div><div class="fnm">${l.descricao}${cn&&cn!=='C6 Bank'?` <span class="bd em">${cn}</span>`:''}</div><div class="fct">${ct} · ${pg?'✅ Pago':'⏳ Pendente'}</div></div></div><div class="fv">${fmt(l.valor)}</div></div>`;
   }).join('');
 }
 
-// CATEGORIAS
+// =============================================
+// CATEGORIAS - CORREÇÃO: Só despesas pagas
+// =============================================
 function rCP(){
-  const d=fl(mA,cA),dp=d.filter(l=>l.tipo==='despesa'),tD=dp.reduce((s,l)=>s+Number(l.valor),0);
+  const d=fl(mA,cA);
+  // Categorias conta só despesas efetivamente pagas (variáveis + fixas pagas)
+  const dp=d.filter(l=>l.tipo==='despesa'&&(!l.recorrente||isPago(l)));
+  const tD=dp.reduce((s,l)=>s+Number(l.valor),0);
   const g={};dp.forEach(l=>{const c=gCa(l),co=gCo(l);if(!g[c])g[c]={t:0,co,q:0,it:[]};g[c].t+=Number(l.valor);g[c].q++;g[c].it.push(l);});
   const so=Object.entries(g).sort((a,b)=>b[1].t-a[1].t);
   const chE=document.getElementById('chC');
@@ -357,7 +386,13 @@ function rCP(){
 // ANUAL
 function rAn(){
   const ms=[];
-  for(let m=0;m<12;m++){const d=fl(m,cA);const dp=d.filter(l=>l.tipo==='despesa').reduce((s,l)=>s+Number(l.valor),0);const rc=d.filter(l=>l.tipo==='receita').reduce((s,l)=>s+Number(l.valor),0);ms.push({n:MN[m].substring(0,3),d:dp,r:rc,s:rc-dp});}
+  for(let m=0;m<12;m++){
+    const d=fl(m,cA);
+    // Anual também só conta despesas pagas
+    const dp=d.filter(l=>l.tipo==='despesa'&&(!l.recorrente||isPago(l))).reduce((s,l)=>s+Number(l.valor),0);
+    const rc=d.filter(l=>l.tipo==='receita').reduce((s,l)=>s+Number(l.valor),0);
+    ms.push({n:MN[m].substring(0,3),d:dp,r:rc,s:rc-dp});
+  }
   document.getElementById('gA').innerHTML=ms.map((m,i)=>{
     const sc=m.s>=0?'color:var(--green)':'color:var(--red)';
     return`<div class="mc ${i===mA?'at':''}" onclick="mA=${i};document.querySelectorAll('.sM2,#sM').forEach(s=>s.value=${i});af();go('pgD',document.querySelector('.nv'))"><div class="ml">${m.n}</div><div class="md">-${fmt(m.d)}</div><div class="mr">+${fmt(m.r)}</div><div class="ms" style="${sc}">${m.s>=0?'+':''}${fmt(m.s)}</div></div>`;
